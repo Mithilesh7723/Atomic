@@ -1,0 +1,44 @@
+/* Add styling for select dropdown options to ensure they are visible */
+select option {
+  background-color: #1f2937 !important; /* Dark background */
+  color: white !important; /* Light text */
+}
+
+/* Ensure dropdown text is visible in the select component */
+.glass-input, .glass-button, .glass-button-primary {
+  color: white;
+}
+
+select {
+  color: white !important;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Style select elements to ensure better visibility */
+select.glass-input {
+  color: white !important;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='none' d='M0 0h24v24H0z'/%3E%3Cpath d='M12 15l-4.243-4.243 1.415-1.414L12 12.172l2.828-2.829 1.415 1.414z' fill='rgba(255,255,255,0.5)'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+/* Date inputs should have white text */
+input[type="date"] {
+  color: white !important;
+}
+
+/* Fix for Firefox which renders selects differently */
+@-moz-document url-prefix() {
+  select.glass-input {
+    color: white !important;
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  select.glass-input option {
+    background-color: #1f2937 !important;
+    color: white !important;
+  }
+} 

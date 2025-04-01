@@ -1,0 +1,40 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "employees": {
+      ".indexOn": ["userId"],
+      "$employeeId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "goals": {
+      ".indexOn": ["employeeId"],
+      "$goalId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "feedbacks": {
+      ".indexOn": ["employeeId"],
+      "$feedbackId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "performanceMetrics": {
+      ".indexOn": ["employeeId", "metric"],
+      "$metricId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "users": {
+      "$userId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+} 
