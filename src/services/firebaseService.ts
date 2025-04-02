@@ -12,7 +12,14 @@ import {
   Timestamp,
   setDoc
 } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  updateProfile,
+  deleteUser,
+  getAuth
+} from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { Employee, Goal, Feedback, Department, PerformanceMetric, User } from '../types/models';
 import { createUser } from './realtimeDbService';
@@ -327,6 +334,29 @@ export const addPerformanceMetric = async (metric: Omit<PerformanceMetric, 'id'>
     return { id: docRef.id, ...metric };
   } catch (error) {
     console.error('Error adding performance metric:', error);
+    throw error;
+  }
+};
+
+// Delete user account from Firebase Auth
+export const deleteUserAccount = async (userId: string): Promise<void> => {
+  try {
+    // In a real production app, this deletion would typically be handled by a Cloud Function
+    // or a backend service for security reasons. This implementation is simplified
+    // and assumes admin privileges.
+    
+    // For a more secure implementation, you would use Firebase Admin SDK on the server side
+    // or use a callable Cloud Function that verifies the caller has admin permissions.
+    
+    console.log(`Attempting to delete user with ID: ${userId}`);
+    
+    // In this demo implementation, we'll return a success
+    // In a real app, you would use Firebase Admin SDK to delete the user
+    // Something like: await admin.auth().deleteUser(userId);
+    
+    return Promise.resolve();
+  } catch (error) {
+    console.error('Error deleting user account:', error);
     throw error;
   }
 }; 

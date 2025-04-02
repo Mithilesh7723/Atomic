@@ -1,17 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, User, FileText, BarChart4, PieChart, AlertCircle, HelpCircle, MessageSquare, Users } from 'lucide-react';
+import { 
+  LogOut, 
+  User, 
+  FileText, 
+  BarChart4, 
+  PieChart, 
+  AlertCircle, 
+  HelpCircle, 
+  MessageSquare, 
+  Users, 
+  Upload, 
+  Edit, 
+  X,
+  MapPin,
+  Phone,
+  Mail,
+  Calendar,
+  Save,
+  CheckCircle
+} from 'lucide-react';
 import { 
   getEmployeeByUserId, 
   getEmployeeByUserIdFallback,
   subscribeToFeedbacks, 
   subscribeToGoals,
   subscribeToPerformanceMetrics,
-  getAllEmployees
+  getAllEmployees,
+  updateEmployee
 } from '../services/realtimeDbService';
 import { Employee, Feedback, Goal, Metric, PerformanceMetric } from '../types/models';
 import FeedbackSection from './FeedbackSection';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Component to display a metric with a progress bar
 const MetricsCard: React.FC<{ metric: Metric }> = ({ metric }) => {
@@ -53,6 +74,178 @@ const MetricsCard: React.FC<{ metric: Metric }> = ({ metric }) => {
   );
 };
 
+// Profile Edit Modal Component
+const ProfileEditModal = ({ employee, onClose, onSave }) => {
+  const [address, setAddress] = useState(employee.address || '');
+  const [phoneNumber, setPhoneNumber] = useState(employee.phoneNumber || '');
+  const [birthDate, setBirthDate] = useState(employee.birthDate || '');
+  const [emergencyContact, setEmergencyContact] = useState(employee.emergencyContact || '');
+  const [bio, setBio] = useState(employee.bio || '');
+  const [isLoading, setIsLoading] = useState(false);
+  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const updatedData = {
+        address,
+        phoneNumber,
+        birthDate,
+        emergencyContact,
+        bio,
+      };
+      
+      await onSave(updatedData);
+      
+      setNotification({
+        show: true,
+        message: 'Profile updated successfully!',
+        type: 'success'
+      });
+      
+      // Close after a short delay
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      setNotification({
+        show: true,
+        message: 'Failed to update profile',
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="glass-card max-w-lg w-full p-1 animate-scale-in">
+        <div className="rounded-xl p-6 relative overflow-hidden">
+          {/* Shimmering border effect */}
+          <div className="absolute inset-0 animated-gradient opacity-20"></div>
+          
+    <div className="relative z-10">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3">
+                  <Edit className="w-6 h-6 text-indigo-300" />
+                </div>
+                <h3 className="text-xl font-semibold text-white">Edit Profile</h3>
+              </div>
+              <button 
+                onClick={onClose} 
+                className="text-white/70 hover:text-white rounded-full hover:bg-white/10 p-1 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {notification.show && (
+              <div className={`mb-4 p-3 ${notification.type === 'success' ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-red-500/20 border-red-500/30'} border rounded-lg text-white text-sm flex items-center`}>
+                {notification.type === 'success' ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-400 mr-2" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-400 mr-2" />
+                )}
+                <span>{notification.message}</span>
+              </div>
+            )}
+            
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Address</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input"
+                  placeholder="Your address"
+                />
+              </div>
+              
+          <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input"
+                  placeholder="Your phone number"
+                />
+          </div>
+          
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Birth Date</label>
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Emergency Contact</label>
+              <input 
+                type="text" 
+                  value={emergencyContact}
+                  onChange={(e) => setEmergencyContact(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input"
+                  placeholder="Name and contact number"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Bio</label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input"
+                  rows={3}
+                  placeholder="Tell us about yourself"
+              />
+            </div>
+              
+              <div className="flex justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 glass-button rounded-lg"
+                  disabled={isLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 glass-button-primary rounded-lg flex items-center"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -65,6 +258,11 @@ const Dashboard = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetric[]>([]);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchEmployeeData = async () => {
@@ -172,6 +370,157 @@ const Dashboard = () => {
     fetchEmployeeData();
   }, [user]);
 
+  // Handle profile photo upload
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!employee || !e.target.files || e.target.files.length === 0) return;
+    
+    const file = e.target.files[0];
+    setUploadingPhoto(true);
+    console.log("Starting photo upload...");
+    
+    try {
+      // Skip Firebase Storage due to CORS issues and use base64 encoding directly
+      console.log("Using direct base64 encoding for image upload");
+      
+      // Use canvas to compress the image before converting to base64
+      const compressImage = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (!event.target?.result) {
+              reject(new Error("Failed to read file"));
+              return;
+            }
+            
+            const img = new Image();
+            img.onload = () => {
+              // Create canvas for resizing
+              const canvas = document.createElement('canvas');
+              
+              // Set maximum dimensions
+              let width = img.width;
+              let height = img.height;
+              const MAX_WIDTH = 800;
+              const MAX_HEIGHT = 800;
+              
+              // Resize if needed
+              if (width > height) {
+                if (width > MAX_WIDTH) {
+                  height *= MAX_WIDTH / width;
+                  width = MAX_WIDTH;
+                }
+              } else {
+                if (height > MAX_HEIGHT) {
+                  width *= MAX_HEIGHT / height;
+                  height = MAX_HEIGHT;
+                }
+              }
+              
+              canvas.width = width;
+              canvas.height = height;
+              
+              // Draw and compress
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                reject(new Error("Could not get canvas context"));
+                return;
+              }
+              
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // Convert to base64 with reduced quality
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+              resolve(dataUrl);
+            };
+            
+            img.onerror = () => {
+              reject(new Error("Failed to load image"));
+            };
+            
+            img.src = event.target.result as string;
+          };
+          
+          reader.onerror = () => {
+            reject(reader.error || new Error("Error reading file"));
+          };
+          
+          reader.readAsDataURL(file);
+        });
+      };
+      
+      try {
+        // Compress and convert image to base64
+        console.log("Compressing image...");
+        const base64Image = await compressImage(file);
+        console.log("Compression complete. Base64 length:", base64Image.length);
+        
+        // Update employee with compressed base64 image
+        console.log("Updating employee record with compressed image...");
+        await updateEmployee(employee.id, { photoURL: base64Image });
+        
+        // Update local state
+        setEmployee(prev => {
+          console.log("Updating local state with compressed image");
+          return prev ? { ...prev, photoURL: base64Image } : null;
+        });
+        
+        // Show success notification
+        setNotification({
+          show: true,
+          message: 'Profile photo updated successfully!',
+          type: 'success'
+        });
+        
+        // Hide notification after 3 seconds
+        setTimeout(() => {
+          setNotification({ show: false, message: '', type: '' });
+        }, 3000);
+        
+      } catch (error) {
+        console.error("Failed during image compression:", error);
+        setNotification({
+          show: true,
+          message: 'Failed to process image. Please try a smaller image.',
+          type: 'error'
+        });
+      } finally {
+        setUploadingPhoto(false);
+      }
+    } catch (error) {
+      console.error('Error in photo upload process:', error);
+      if (error instanceof Error) {
+        console.error(`Error name: ${error.name}, message: ${error.message}`);
+        console.error(`Error stack: ${error.stack}`);
+      }
+      
+      setNotification({
+        show: true,
+        message: `Failed to upload photo: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error'
+      });
+      
+      setUploadingPhoto(false);
+    }
+  };
+
+  // Handle profile update
+  const handleProfileUpdate = async (profileData) => {
+    if (!employee) return;
+    
+    try {
+      // Update employee with the new profile data
+      await updateEmployee(employee.id, profileData);
+      
+      // Update local state
+      setEmployee(prev => prev ? { ...prev, ...profileData } : null);
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  };
+
   // Helper to get target values for different metrics
   const getTargetForMetric = (metricName: string): number => {
     switch(metricName.toLowerCase()) {
@@ -250,6 +599,18 @@ const Dashboard = () => {
         <div className="absolute bottom-20 left-40 w-72 h-72 bg-pink-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-blob animation-delay-4000" />
       </div>
 
+      {/* Notification */}
+      {notification.show && (
+        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 ${notification.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'} text-white px-6 py-3 rounded-lg shadow-lg flex items-center animate-fade-in`}>
+          {notification.type === 'success' ? (
+            <CheckCircle className="w-5 h-5 mr-2" />
+          ) : (
+            <AlertCircle className="w-5 h-5 mr-2" />
+          )}
+          {notification.message}
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="glass border-b border-white/10 relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -278,23 +639,126 @@ const Dashboard = () => {
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 relative z-10">
+        {/* Profile section */}
+        <div className="glass-card p-6 mb-8">
+          <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+            <User className="w-5 h-5 mr-2 text-indigo-300" />
+            My Profile
+          </h2>
+          
+          <div className="flex flex-col md:flex-row items-start gap-8">
+            {/* Profile photo */}
+            <div className="flex flex-col items-center">
+              <div className="relative group">
+                <div className="w-32 h-32 rounded-full bg-indigo-500/30 flex items-center justify-center overflow-hidden border-2 border-indigo-500/50">
+                  {employee.photoURL ? (
+                    <img 
+                      src={employee.photoURL} 
+                      alt={employee.name} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-16 h-16 text-white" />
+                  )}
+                </div>
+                
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="absolute bottom-0 right-0 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full transition-colors shadow-lg"
+                >
+                  {uploadingPhoto ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload className="w-4 h-4" />
+                  )}
+                </button>
+                
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={handlePhotoUpload}
+                  accept="image/*"
+                  className="hidden"
+          />
+        </div>
+
+              <h3 className="text-lg font-medium text-white mt-4">{employee.name}</h3>
+              <p className="text-white/70 mb-1">{employee.position}</p>
+              <p className="text-white/50 text-sm">{employee.department}</p>
+            </div>
+            
+            {/* Profile details */}
+            <div className="flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="glass p-4 rounded-xl">
+                  <div className="flex items-center mb-2">
+                    <Mail className="w-4 h-4 text-indigo-300 mr-2" />
+                    <h4 className="text-sm font-medium text-white/80">Email</h4>
+                  </div>
+                  <p className="text-white ml-6" style={{ color: "white !important", opacity: 1, visibility: "visible", textShadow: "0 0 0 white", fontWeight: "normal" }}>
+                    {employee?.email || user?.email || 'Email not available'}
+                  </p>
+                </div>
+                
+                <div className="glass p-4 rounded-xl">
+                  <div className="flex items-center mb-2">
+                    <Phone className="w-4 h-4 text-indigo-300 mr-2" />
+                    <h4 className="text-sm font-medium text-white/80">Phone Number</h4>
+                  </div>
+                  <p className="text-white ml-6">{employee.phoneNumber || 'Not provided'}</p>
+                </div>
+                
+                <div className="glass p-4 rounded-xl">
+                  <div className="flex items-center mb-2">
+                    <MapPin className="w-4 h-4 text-indigo-300 mr-2" />
+                    <h4 className="text-sm font-medium text-white/80">Address</h4>
+                  </div>
+                  <p className="text-white ml-6">{employee.address || 'Not provided'}</p>
+                </div>
+                
+                <div className="glass p-4 rounded-xl">
+                  <div className="flex items-center mb-2">
+                    <Calendar className="w-4 h-4 text-indigo-300 mr-2" />
+                    <h4 className="text-sm font-medium text-white/80">Birth Date</h4>
+                  </div>
+                  <p className="text-white ml-6">{employee.birthDate || 'Not provided'}</p>
+                </div>
+              </div>
+              
+              {/* Bio */}
+              {employee.bio && (
+                <div className="glass p-4 rounded-xl mt-6">
+                  <div className="flex items-center mb-2">
+                    <User className="w-4 h-4 text-indigo-300 mr-2" />
+                    <h4 className="text-sm font-medium text-white/80">Bio</h4>
+                  </div>
+                  <p className="text-white">{employee.bio}</p>
+                </div>
+              )}
+              
+              {/* Edit profile button */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setShowEditProfile(true)}
+                  className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Profile
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Employee profile summary */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="md:col-span-2 glass-card p-6">
             <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
-              <User className="w-5 h-5 mr-2 text-indigo-300" />
-              Profile Overview
+              <BarChart4 className="w-5 h-5 mr-2 text-indigo-300" />
+              Performance Overview
             </h2>
-            <div className="flex items-center mb-4">
-              <div className="w-16 h-16 rounded-full bg-indigo-500/30 flex items-center justify-center mr-4">
-                <User className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">{employee.name}</h3>
-                <p className="text-white/70">{employee.position}</p>
-                <p className="text-white/50 text-sm">{employee.department}</p>
-              </div>
-            </div>
+            
             <div className="glass p-4 rounded-xl">
               <div className="mb-3">
                 <div className="flex justify-between text-sm mb-1">
@@ -368,8 +832,17 @@ const Dashboard = () => {
           </div>
           
           <FeedbackSection feedbacks={feedbacks} />
-        </div>
+      </div>
       </main>
+      
+      {/* Profile Edit Modal */}
+      {showEditProfile && (
+        <ProfileEditModal 
+          employee={employee}
+          onClose={() => setShowEditProfile(false)}
+          onSave={handleProfileUpdate}
+        />
+      )}
     </div>
   );
 };

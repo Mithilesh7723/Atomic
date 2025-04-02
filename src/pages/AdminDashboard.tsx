@@ -17,7 +17,13 @@ import {
   Sparkles,
   Loader2,
   FileText,
-  Calendar
+  Calendar,
+  Trash2,
+  Eye,
+  Phone,
+  Mail,
+  MapPin,
+  Info
 } from 'lucide-react';
 import { Employee as EmployeeType, Feedback as FeedbackType, Goal as GoalType } from '../types/models';
 import { 
@@ -26,9 +32,10 @@ import {
   createFeedback,
   createEmployee,
   createGoal,
-  createPerformanceMetric
+  createPerformanceMetric,
+  deleteEmployee
 } from '../services/realtimeDbService';
-import { registerUser } from '../services/firebaseService';
+import { registerUser, deleteUserAccount } from '../services/firebaseService';
 
 interface Employee {
   id: string;
@@ -72,6 +79,17 @@ interface GoalModalProps {
   onSubmit: (title: string, description: string, targetDate: string, status: string) => void;
 }
 
+interface EmployeeDetailsModalProps {
+  employee: EmployeeType;
+  onClose: () => void;
+}
+
+interface DeleteConfirmationModalProps {
+  employee: EmployeeType;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
 const ReviewModal: React.FC<ReviewModalProps> = ({ employee, onClose, onSubmit }) => {
   const [overallRating, setOverallRating] = useState(3);
   const [communicationRating, setCommunicationRating] = useState(3);
@@ -93,17 +111,17 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ employee, onClose, onSubmit }
   const renderRatingStars = (value: number, onChange: (value: number) => void, label: string) => (
     <div>
       <label className="block text-sm font-medium text-white/80 mb-1">{label}</label>
-      <div className="flex items-center space-x-1">
+      <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
             type="button"
             onClick={() => onChange(star)}
-            className={`p-1 rounded-full transition-all duration-200 ${
-              value >= star ? 'text-yellow-400 scale-105' : 'text-gray-500 hover:text-gray-300'
+            className={`w-7 h-7 flex items-center justify-center rounded-full transition-all duration-200 ${
+              value >= star ? 'text-yellow-400 bg-yellow-400/10' : 'text-gray-500 hover:text-gray-300'
             }`}
           >
-            <Star className={`w-5 h-5 ${value >= star ? 'fill-yellow-400' : ''}`} />
+            <Star className={`w-4 h-4 ${value >= star ? 'fill-yellow-400' : ''}`} />
           </button>
         ))}
       </div>
@@ -142,16 +160,16 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ employee, onClose, onSubmit }
                 {renderRatingStars(overallRating, setOverallRating, "Overall Performance")}
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="glass p-3 rounded-xl">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="glass p-4 rounded-xl">
                   {renderRatingStars(communicationRating, setCommunicationRating, "Communication")}
                 </div>
                 
-                <div className="glass p-3 rounded-xl">
+                <div className="glass p-4 rounded-xl">
                   {renderRatingStars(teamworkRating, setTeamworkRating, "Teamwork")}
                 </div>
                 
-                <div className="glass p-3 rounded-xl">
+                <div className="glass p-4 rounded-xl">
                   {renderRatingStars(technicalRating, setTechnicalRating, "Technical Skills")}
                 </div>
               </div>
@@ -561,6 +579,283 @@ const GoalModal: React.FC<GoalModalProps> = ({ employee, onClose, onSubmit }) =>
   );
 };
 
+const EmployeeDetailsModal: React.FC<EmployeeDetailsModalProps> = ({ employee, onClose }) => {
+  // Debug log to check employee object
+  console.log("Employee details in modal:", employee);
+  console.log("Email value:", employee.email);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="glass-card max-w-4xl w-full p-1 animate-scale-in">
+        <div className="rounded-xl p-6 relative overflow-hidden">
+          {/* Shimmering border effect */}
+          <div className="absolute inset-0 animated-gradient opacity-20"></div>
+          
+          <div className="relative z-10">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3">
+                  <UserCircle className="w-6 h-6 text-indigo-300" />
+                </div>
+                <h3 className="text-xl font-semibold text-white">Employee Details</h3>
+              </div>
+              <button 
+                onClick={onClose} 
+                className="text-white/70 hover:text-white rounded-full hover:bg-white/10 p-1 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex flex-col md:flex-row gap-8">
+              {/* Profile photo and basic info */}
+              <div className="flex flex-col items-center">
+                <div className="w-32 h-32 rounded-full bg-indigo-500/30 flex items-center justify-center overflow-hidden border-2 border-indigo-500/50">
+                  {employee.photoURL ? (
+                    <img 
+                      src={employee.photoURL} 
+                      alt={employee.name} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <UserCircle className="w-16 h-16 text-white" />
+                  )}
+                </div>
+                
+                <h3 className="text-lg font-medium text-white mt-4">{employee.name}</h3>
+                <p className="text-white/70 mb-1">{employee.position}</p>
+                <p className="text-white/50 text-sm">{employee.department}</p>
+                
+                {/* Performance score */}
+                <div className="mt-6 w-full max-w-[200px]">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-white/70">Overall Performance</span>
+                    <span className="text-white">{employee.performanceScore || 'N/A'}%</span>
+                  </div>
+                  <div className="w-full bg-white/10 rounded-full h-2">
+                    <div 
+                      className="h-full rounded-full bg-indigo-500" 
+                      style={{ width: `${employee.performanceScore || 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Detailed information */}
+              <div className="flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="glass p-4 rounded-xl">
+                    <div className="flex items-center mb-2">
+                      <Mail className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Email</h4>
+                    </div>
+                    <div className="ml-6 bg-indigo-500/10 px-3 py-2 rounded text-white inline-block">
+                      {employee?.email || 'Email not available'}
+                    </div>
+                  </div>
+                  
+                  <div className="glass p-4 rounded-xl">
+                    <div className="flex items-center mb-2">
+                      <Phone className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Phone Number</h4>
+                    </div>
+                    <p className="text-white ml-6">{employee.phoneNumber || 'Not provided'}</p>
+                  </div>
+                  
+                  <div className="glass p-4 rounded-xl">
+                    <div className="flex items-center mb-2">
+                      <MapPin className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Address</h4>
+                    </div>
+                    <p className="text-white ml-6">{employee.address || 'Not provided'}</p>
+                  </div>
+                  
+                  <div className="glass p-4 rounded-xl">
+                    <div className="flex items-center mb-2">
+                      <Calendar className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Birth Date</h4>
+                    </div>
+                    <p className="text-white ml-6">{employee.birthDate || 'Not provided'}</p>
+                  </div>
+                  
+                  <div className="glass p-4 rounded-xl">
+                    <div className="flex items-center mb-2">
+                      <Info className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">User ID</h4>
+                    </div>
+                    <p className="text-white ml-6 text-sm break-all">{employee.userId || 'Not available'}</p>
+                  </div>
+                  
+                  <div className="glass p-4 rounded-xl">
+                    <div className="flex items-center mb-2">
+                      <Calendar className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Join Date</h4>
+                    </div>
+                    <p className="text-white ml-6">
+                      {employee.createdAt 
+                        ? new Date(employee.createdAt).toLocaleDateString() 
+                        : 'Not available'}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Bio information if available */}
+                {employee.bio && (
+                  <div className="glass p-4 rounded-xl mt-4">
+                    <div className="flex items-center mb-2">
+                      <UserCircle className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Bio</h4>
+                    </div>
+                    <p className="text-white ml-6">{employee.bio}</p>
+                  </div>
+                )}
+                
+                {/* Emergency contact if available */}
+                {employee.emergencyContact && (
+                  <div className="glass p-4 rounded-xl mt-4">
+                    <div className="flex items-center mb-2">
+                      <AlertCircle className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Emergency Contact</h4>
+                    </div>
+                    <p className="text-white ml-6">{employee.emergencyContact}</p>
+                  </div>
+                )}
+                
+                {/* Performance metrics if available */}
+                {employee.metrics && (
+                  <div className="glass p-4 rounded-xl mt-4">
+                    <div className="flex items-center mb-3">
+                      <BarChart4 className="w-4 h-4 text-indigo-300 mr-2" />
+                      <h4 className="text-sm font-medium text-white/80">Performance Metrics</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 ml-6">
+                      {Object.entries(employee.metrics).map(([key, value]) => (
+                        <div key={key} className="bg-white/5 p-3 rounded-lg">
+                          <p className="text-white/70 text-xs capitalize mb-1">{key}</p>
+                          <div className="flex justify-between items-center">
+                            <div className="w-full bg-white/10 rounded-full h-1.5 mr-2">
+                              <div 
+                                className="h-full rounded-full bg-indigo-500" 
+                                style={{ width: `${value}%` }}
+                              />
+                            </div>
+                            <span className="text-white text-xs whitespace-nowrap">{value}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="mt-8 flex justify-end">
+              <button
+                onClick={onClose}
+                className="glass-button px-6 py-2 rounded-lg text-white/80 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ employee, onClose, onConfirm }) => {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const confirmationPhrase = `delete ${employee.name}`;
+  
+  const handleConfirm = async () => {
+    if (confirmText.toLowerCase() !== confirmationPhrase.toLowerCase()) return;
+    
+    setIsDeleting(true);
+    try {
+      await onConfirm();
+      onClose();
+    } catch (error) {
+      console.error('Error during deletion:', error);
+      setIsDeleting(false);
+    }
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="glass-card max-w-md w-full p-1 animate-scale-in">
+        <div className="rounded-xl p-6 relative overflow-hidden">
+          {/* Shimmering border effect */}
+          <div className="absolute inset-0 animated-gradient opacity-20"></div>
+          
+          <div className="relative z-10">
+            <div className="flex items-center mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center mr-3">
+                <Trash2 className="w-6 h-6 text-red-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-white">Delete Employee</h3>
+            </div>
+            
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+              <p className="text-white">
+                <strong>Warning:</strong> This action is permanent and cannot be undone. 
+                Deleting this employee will remove all their data from the system, including:
+              </p>
+              <ul className="text-white/80 text-sm mt-2 ml-5 list-disc space-y-1">
+                <li>Personal information and profile data</li>
+                <li>Performance metrics and reviews</li>
+                <li>Goals and feedback history</li>
+                <li>User account (they will no longer be able to log in)</li>
+              </ul>
+            </div>
+            
+            <p className="text-white/80 mb-4">
+              To confirm, please type <span className="font-medium text-white">{confirmationPhrase}</span> below:
+            </p>
+            
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl glass-input mb-6"
+              placeholder="Type the confirmation phrase"
+            />
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 glass-button rounded-lg"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={confirmText.toLowerCase() !== confirmationPhrase.toLowerCase() || isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Employee
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -583,41 +878,50 @@ const AdminDashboard = () => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [showEmployeeDetails, setShowEmployeeDetails] = useState(false);
 
-  // Fetch employees from Realtime Database
   useEffect(() => {
-    const fetchEmployees = async () => {
-      setLoading(true);
-      try {
-        const employeesData = await getAllEmployees();
-        setEmployees(employeesData);
-
-        // Create recent activities from employee data
-        // This would ideally come from a dedicated activity log in a real app
-        const recentFeedbacks = employeesData
-          .slice(0, 3)
-          .map((emp, index) => {
-            return {
-              type: index === 0 ? 'review' as const : 'feedback' as const,
-              message: index === 0 
-                ? `You submitted a performance review for ${emp.name}`
-                : `You provided feedback to ${emp.name}`,
-              timestamp: new Date(Date.now() - index * 24 * 60 * 60 * 1000),
-              employeeName: emp.name
-            };
-          });
-        
-        setRecentActivity(recentFeedbacks);
-      } catch (err: any) {
-        console.error('Error fetching employees', err);
-        setError('Failed to load employees');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchEmployees();
   }, []);
+
+  // Log selected employee when it changes
+  useEffect(() => {
+    if (selectedEmployee) {
+      console.log("Selected employee updated:", selectedEmployee);
+      console.log("Selected employee email:", selectedEmployee.email);
+    }
+  }, [selectedEmployee]);
+
+  const fetchEmployees = async () => {
+    setLoading(true);
+    try {
+      const employeesData = await getAllEmployees();
+      setEmployees(employeesData);
+
+      // Create recent activities from employee data
+      // This would ideally come from a dedicated activity log in a real app
+      const recentFeedbacks = employeesData
+        .slice(0, 3)
+        .map((emp, index) => {
+          return {
+            type: index === 0 ? 'review' as const : 'feedback' as const,
+            message: index === 0 
+              ? `You submitted a performance review for ${emp.name}`
+              : `You provided feedback to ${emp.name}`,
+            timestamp: new Date(Date.now() - index * 24 * 60 * 60 * 1000),
+            employeeName: emp.name
+          };
+        });
+      
+      setRecentActivity(recentFeedbacks);
+    } catch (err: any) {
+      console.error('Error fetching employees', err);
+      setError('Failed to load employees');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -865,6 +1169,40 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteEmployee = async () => {
+    if (!selectedEmployee || !selectedEmployee.userId) return;
+    
+    setLoading(true);
+    try {
+      // First delete the employee data from the Realtime Database
+      await deleteEmployee(selectedEmployee.id);
+      
+      // Then delete the user account
+      await deleteUserAccount(selectedEmployee.userId);
+      
+      // Update local state
+      setEmployees(prev => prev.filter(emp => emp.id !== selectedEmployee.id));
+      
+      // Add to recent activity
+      setRecentActivity(prev => [{
+        type: 'employee',
+        message: `You removed ${selectedEmployee.name} from the system`,
+        timestamp: new Date(),
+        employeeName: selectedEmployee.name
+      }, ...prev.slice(0, 4)]);
+      
+      // Show success notification
+      showNotification('success', `Employee ${selectedEmployee.name} has been deleted`);
+      
+    } catch (err: any) {
+      console.error('Error deleting employee', err);
+      showNotification('error', `Failed to delete employee: ${err.message}`);
+    } finally {
+      setLoading(false);
+      setShowDeleteConfirmation(false);
+    }
+  };
+
   // Generate a performance color based on score
   const getPerformanceColor = (score: number) => {
     if (score >= 90) return 'bg-emerald-500';
@@ -936,88 +1274,88 @@ const AdminDashboard = () => {
           </div>
         ) : (
           <>
-            {/* Stats Section */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="glass-card p-6 flex items-center">
-                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-                  <Users className="w-6 h-6 text-blue-300" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/70">Total Employees</div>
-                  <div className="text-2xl font-semibold text-white">{employees.length}</div>
-                </div>
-              </div>
-              
-              <div className="glass-card p-6 flex items-center">
-                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-                  <BarChart4 className="w-6 h-6 text-emerald-300" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/70">Average Performance</div>
-                  <div className="text-2xl font-semibold text-white">
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="glass-card p-6 flex items-center">
+            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+              <Users className="w-6 h-6 text-blue-300" />
+            </div>
+            <div>
+              <div className="text-sm text-white/70">Total Employees</div>
+              <div className="text-2xl font-semibold text-white">{employees.length}</div>
+            </div>
+          </div>
+          
+          <div className="glass-card p-6 flex items-center">
+            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+              <BarChart4 className="w-6 h-6 text-emerald-300" />
+            </div>
+            <div>
+              <div className="text-sm text-white/70">Average Performance</div>
+              <div className="text-2xl font-semibold text-white">
                     {employees.length > 0 
                       ? Math.round(employees.reduce((sum, emp) => sum + (emp.performanceScore || 0), 0) / employees.length)
                       : 0}%
-                  </div>
-                </div>
-              </div>
-              
-              <div className="glass-card p-6 flex items-center">
-                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-                  <LineChart className="w-6 h-6 text-purple-300" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/70">Reviews Completed</div>
-                  <div className="text-2xl font-semibold text-white">
-                    {employees.filter(emp => emp.performanceScore !== undefined).length}
-                  </div>
-                </div>
               </div>
             </div>
+          </div>
+          
+          <div className="glass-card p-6 flex items-center">
+            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+              <LineChart className="w-6 h-6 text-purple-300" />
+            </div>
+            <div>
+              <div className="text-sm text-white/70">Reviews Completed</div>
+              <div className="text-2xl font-semibold text-white">
+                    {employees.filter(emp => emp.performanceScore !== undefined).length}
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <div className="glass-card mb-8">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-semibold text-white flex items-center">
-                    <Sparkles className="w-5 h-5 mr-2 text-indigo-300" />
-                    Employee Overview
-                  </h2>
+        <div className="glass-card mb-8">
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-white flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-indigo-300" />
+                Employee Overview
+              </h2>
                   <button 
                     onClick={() => setShowAddEmployeeModal(true)}
                     className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
                   >
-                    <PlusCircle className="w-4 h-4 mr-2" />
-                    Add Employee
-                  </button>
-                </div>
-                
+                <PlusCircle className="w-4 h-4 mr-2" />
+                Add Employee
+              </button>
+            </div>
+            
                 {loading && employees.length > 0 ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-white/10">
-                      <thead>
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                            Name
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                            Position
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                            Performance
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-white/10">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Position
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Performance
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
                             Department
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/10">
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
                         {employees.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="px-6 py-8 text-center text-white/70">
@@ -1026,59 +1364,72 @@ const AdminDashboard = () => {
                           </tr>
                         ) : (
                           employees.map((employee) => (
-                            <tr key={employee.id} className="hover:bg-white/5 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center">
-                                  <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3">
-                                    <UserCircle className="w-5 h-5 text-indigo-300" />
-                                  </div>
-                                  <div className="text-sm font-medium text-white">{employee.name}</div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-white/80">{employee.position}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center">
-                                  <div className="w-full bg-white/10 rounded-full h-2 mr-2 max-w-[100px]">
-                                    <div
-                                      className={`h-full rounded-full ${getPerformanceColor(employee.performanceScore || 0)}`}
+                    <tr key={employee.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                                  <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3 overflow-hidden">
+                                    {employee.photoURL ? (
+                                      <img src={employee.photoURL} alt={employee.name} className="w-full h-full object-cover" />
+                                    ) : (
+                            <UserCircle className="w-5 h-5 text-indigo-300" />
+                                    )}
+                          </div>
+                          <div className="text-sm font-medium text-white">{employee.name}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-white/80">{employee.position}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="w-full bg-white/10 rounded-full h-2 mr-2 max-w-[100px]">
+                            <div
+                                      className="h-full rounded-full bg-indigo-500" 
                                       style={{ width: `${employee.performanceScore || 0}%` }}
-                                    />
-                                  </div>
+                            />
+                          </div>
                                   <span className="text-sm text-white/80">{employee.performanceScore || 'N/A'}%</span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
                                 {employee.department}
-                              </td>
+                      </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
                                 <div className="flex space-x-2">
-                                  <button
-                                    onClick={() => {
-                                      setSelectedEmployee(employee);
-                                      setShowReviewModal(true);
-                                    }}
+                        <button
+                          onClick={() => {
+                                      setSelectedEmployee({
+                                        ...employee,
+                                        email: employee.email || '' // Ensure email is populated
+                                      });
+                            setShowReviewModal(true);
+                          }}
                                     className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white group"
                                     title="Submit Performance Review"
-                                  >
+                        >
                                     <Star className="w-4 h-4 group-hover:fill-yellow-400 transition-colors" />
-                                  </button>
+                        </button>
                                   
-                                  <button
-                                    onClick={() => {
-                                      setSelectedEmployee(employee);
-                                      setShowFeedbackModal(true);
-                                    }}
+                        <button
+                          onClick={() => {
+                                      setSelectedEmployee({
+                                        ...employee,
+                                        email: employee.email || '' // Ensure email is populated
+                                      });
+                            setShowFeedbackModal(true);
+                          }}
                                     className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
                                     title="Send Feedback"
-                                  >
+                        >
                                     <MessageSquare className="w-4 h-4" />
-                                  </button>
+                        </button>
                                   
                                   <button
                                     onClick={() => {
-                                      setSelectedEmployee(employee);
+                                      setSelectedEmployee({
+                                        ...employee,
+                                        email: employee.email || '' // Ensure email is populated
+                                      });
                                       setShowGoalModal(true);
                                     }}
                                     className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
@@ -1086,33 +1437,61 @@ const AdminDashboard = () => {
                                   >
                                     <FileText className="w-4 h-4" />
                                   </button>
+                                  
+                                  <button
+                                    onClick={() => {
+                                      setSelectedEmployee({
+                                        ...employee,
+                                        email: employee.email || '' // Ensure email is populated
+                                      });
+                                      setShowEmployeeDetails(true);
+                                    }}
+                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
+                                    title="View Details"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => {
+                                      setSelectedEmployee({
+                                        ...employee,
+                                        email: employee.email || '' // Ensure email is populated
+                                      });
+                                      setShowDeleteConfirmation(true);
+                                    }}
+                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white hover:text-red-400"
+                                    title="Delete Employee"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
-                              </td>
-                            </tr>
+                      </td>
+                    </tr>
                           ))
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                </tbody>
+              </table>
             </div>
-
-            <div className="glass-card">
-              <div className="p-6">
-                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                  <AlertCircle className="w-5 h-5 mr-2 text-indigo-300" />
-                  Recent Activities
-                </h2>
+                )}
+          </div>
+        </div>
+        
+        <div className="glass-card">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2 text-indigo-300" />
+              Recent Activities
+            </h2>
                 {recentActivity.length === 0 ? (
                   <div className="glass p-8 rounded-xl text-center text-white/70">
                     No recent activities found. Activities will appear here as you interact with employees.
                   </div>
                 ) : (
-                  <div className="space-y-4">
+            <div className="space-y-4">
                     {recentActivity.map((activity, i) => (
-                      <div key={i} className="glass p-4 rounded-xl hover:bg-white/10 transition-colors">
-                        <div className="flex items-start">
+                <div key={i} className="glass p-4 rounded-xl hover:bg-white/10 transition-colors">
+                  <div className="flex items-start">
                           <div className="flex">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
                               activity.type === 'review' ? 'bg-blue-500/20' : 
@@ -1124,21 +1503,21 @@ const AdminDashboard = () => {
                               {activity.type === 'feedback' && <MessageSquare className="w-5 h-5 text-purple-300" />}
                               {activity.type === 'employee' && <UserCircle className="w-5 h-5 text-indigo-300" />}
                               {activity.type === 'goal' && <FileText className="w-5 h-5 text-emerald-300" />}
-                            </div>
-                            <div>
+                    </div>
+                    <div>
                               <p className="text-white/90">{activity.message}</p>
-                              <p className="text-white/50 text-sm mt-1">
+                      <p className="text-white/50 text-sm mt-1">
                                 {formatRelativeTime(activity.timestamp)}
-                              </p>
+                      </p>
                             </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
+                )}
+          </div>
+        </div>
           </>
         )}
       </main>
@@ -1171,6 +1550,21 @@ const AdminDashboard = () => {
           employee={selectedEmployee}
           onClose={() => setShowGoalModal(false)}
           onSubmit={handleGoalSubmit}
+        />
+      )}
+
+      {showDeleteConfirmation && selectedEmployee && (
+        <DeleteConfirmationModal
+          employee={selectedEmployee}
+          onClose={() => setShowDeleteConfirmation(false)}
+          onConfirm={handleDeleteEmployee}
+        />
+      )}
+
+      {showEmployeeDetails && selectedEmployee && (
+        <EmployeeDetailsModal
+          employee={selectedEmployee}
+          onClose={() => setShowEmployeeDetails(false)}
         />
       )}
     </div>
