@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -25,7 +25,7 @@ import {
   MapPin,
   Info
 } from 'lucide-react';
-import { Employee as EmployeeType, Feedback as FeedbackType, Goal as GoalType } from '../types/models';
+import { Employee as EmployeeType, Feedback as FeedbackType, Goal as GoalType, Notification } from '../types/models';
 import { 
   getAllEmployees, 
   updateEmployee, 
@@ -33,9 +33,16 @@ import {
   createEmployee,
   createGoal,
   createPerformanceMetric,
-  deleteEmployee
+  deleteEmployee as deleteEmployeeFunction,
+  subscribeToNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead
 } from '../services/realtimeDbService';
 import { registerUser, deleteUserAccount } from '../services/firebaseService';
+import Leaderboard from '../components/Leaderboard';
+import { ref, query, orderByChild, equalTo, get, update } from 'firebase/database';
+import { realtimeDb } from '../config/firebase';
+import NotificationBell from '../components/NotificationBell';
 
 interface Employee {
   id: string;
@@ -59,7 +66,7 @@ interface ReviewModalProps {
 interface FeedbackModalProps {
   employee: Employee;
   onClose: () => void;
-  onSubmit: (type: string, feedback: string) => void;
+  onSubmit: (type: string, feedback: string, isResponse: boolean, requestDescription: string) => void;
 }
 
 interface AddEmployeeModalProps {
@@ -215,12 +222,52 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ employee, onClose, onSubmit }
 const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubmit }) => {
   const [type, setType] = useState('praise');
   const [feedback, setFeedback] = useState('');
+  const [isResponse, setIsResponse] = useState(false);
+  const [requestDescription, setRequestDescription] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(type, feedback);
+    onSubmit(type, feedback, isResponse, requestDescription);
     onClose();
   };
+
+  useEffect(() => {
+    // Check if this employee has any pending feedback requests
+    // If they do, pre-populate the form for responding
+    const checkPendingRequests = async () => {
+      try {
+        const feedbacksRef = ref(realtimeDb, 'feedbacks');
+        const requestQuery = query(
+          feedbacksRef, 
+          orderByChild('employeeId'), 
+          equalTo(employee.id)
+        );
+        
+        const snapshot = await get(requestQuery);
+        if (snapshot.exists()) {
+          const feedbacks = snapshot.val();
+          const pendingRequests = Object.values(feedbacks)
+            .filter((fb: any) => fb.category && fb.category.startsWith('request-') && fb.status === 'pending');
+          
+          if (pendingRequests.length > 0) {
+            // Use the most recent request
+            const latestRequest = pendingRequests.reduce((latest: any, current: any) => {
+              return new Date(latest.createdAt) > new Date(current.createdAt) ? latest : current;
+            });
+            
+            // Set the form to respond to this request
+            setIsResponse(true);
+            setRequestDescription(latestRequest.requestDescription || latestRequest.content);
+            setType(latestRequest.category.replace('request-', ''));
+          }
+        }
+      } catch (error) {
+        console.error("Error checking for feedback requests:", error);
+      }
+    };
+    
+    checkPendingRequests();
+  }, [employee.id]);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -235,7 +282,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
                 <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center mr-3">
                   <MessageSquare className="w-6 h-6 text-purple-300" />
                 </div>
-                <h3 className="text-xl font-semibold text-white">Feedback for {employee.name}</h3>
+                <h3 className="text-xl font-semibold text-white">
+                  {isResponse ? 'Respond to Feedback Request' : `Feedback for ${employee.name}`}
+                </h3>
               </div>
               <button 
                 onClick={onClose} 
@@ -244,6 +293,13 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
                 <X className="w-5 h-5" />
               </button>
             </div>
+            
+            {isResponse && (
+              <div className="glass p-4 rounded-xl mb-4">
+                <h4 className="text-sm font-medium text-white/80 mb-2">Employee's Request:</h4>
+                <p className="text-white/70 text-sm">{requestDescription}</p>
+              </div>
+            )}
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -257,6 +313,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
                     <option value="praise" className="bg-gray-800 text-white">Praise</option>
                     <option value="improvement" className="bg-gray-800 text-white">Area for Improvement</option>
                     <option value="general" className="bg-gray-800 text-white">General Feedback</option>
+                    <option value="performance" className="bg-gray-800 text-white">Performance Review</option>
+                    <option value="project" className="bg-gray-800 text-white">Project Specific</option>
+                    <option value="career" className="bg-gray-800 text-white">Career Development</option>
                   </select>
                   <ChevronRight className="absolute right-3 top-1/2 transform -translate-y-1/2 rotate-90 w-5 h-5 text-white/50 pointer-events-none" />
                 </div>
@@ -292,7 +351,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
                   className="px-4 py-2 glass-button-primary rounded-lg flex items-center"
                 >
                   <MessageSquare className="w-4 h-4 mr-2" />
-                  Submit Feedback
+                  {isResponse ? 'Send Response' : 'Submit Feedback'}
                 </button>
               </div>
             </form>
@@ -867,11 +926,14 @@ const AdminDashboard = () => {
     message: string;
   } | null>(null);
   const [recentActivity, setRecentActivity] = useState<{
-    type: 'review' | 'feedback' | 'employee' | 'goal';
+    type: 'review' | 'feedback' | 'employee' | 'goal' | 'request';
     message: string;
     timestamp: Date;
     employeeName: string;
+    employeeId?: string;
+    requestContent?: string;
   }[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeType | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -893,33 +955,127 @@ const AdminDashboard = () => {
     }
   }, [selectedEmployee]);
 
+  // Add a new useEffect for notifications
+  useEffect(() => {
+    let unsubscribeNotifications = () => {};
+
+    if (user) {
+      // Subscribe to notifications for this user
+      unsubscribeNotifications = subscribeToNotifications(user.uid, (notificationsData) => {
+        setNotifications(notificationsData);
+      });
+    }
+
+    return () => {
+      unsubscribeNotifications();
+    };
+  }, [user]);
+
   const fetchEmployees = async () => {
     setLoading(true);
     try {
       const employeesData = await getAllEmployees();
+      console.log("Fetched employees data:", employeesData, "Length:", employeesData.length);
+      
       setEmployees(employeesData);
+
+      // Check for pending feedback requests
+      await fetchPendingFeedbackRequests(employeesData);
 
       // Create recent activities from employee data
       // This would ideally come from a dedicated activity log in a real app
       const recentFeedbacks = employeesData
         .slice(0, 3)
         .map((emp, index) => {
+          // Create random dates ranging from hours to days ago
+          const timeOffsets = [
+            Math.floor(Math.random() * 5 * 60 * 60 * 1000), // 0-5 hours ago
+            Math.floor(Math.random() * 3 * 24 * 60 * 60 * 1000) + 24 * 60 * 60 * 1000, // 1-4 days ago
+            Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000) + 3 * 24 * 60 * 60 * 1000, // 3-10 days ago
+          ];
+          
           return {
             type: index === 0 ? 'review' as const : 'feedback' as const,
             message: index === 0 
               ? `You submitted a performance review for ${emp.name}`
               : `You provided feedback to ${emp.name}`,
-            timestamp: new Date(Date.now() - index * 24 * 60 * 60 * 1000),
+            timestamp: new Date(Date.now() - timeOffsets[index]),
             employeeName: emp.name
           };
         });
       
-      setRecentActivity(recentFeedbacks);
+      setRecentActivity(prev => {
+        // Combine existing feedback requests with the demo activities
+        // but avoid duplicates
+        const demoActivities = recentFeedbacks.filter(item => 
+          !prev.some(existing => 
+            existing.type === 'request' && 
+            existing.employeeName === item.employeeName
+          )
+        );
+        
+        return [...prev, ...demoActivities].sort((a, b) => 
+          b.timestamp.getTime() - a.timestamp.getTime()
+        ).slice(0, 5);
+      });
     } catch (err: any) {
       console.error('Error fetching employees', err);
       setError('Failed to load employees');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Function to fetch pending feedback requests
+  const fetchPendingFeedbackRequests = async (employeesData: EmployeeType[]) => {
+    try {
+      const feedbacksRef = ref(realtimeDb, 'feedbacks');
+      const snapshot = await get(feedbacksRef);
+      
+      if (snapshot.exists()) {
+        const feedbacks = snapshot.val();
+        const pendingRequests = Object.values(feedbacks)
+          .filter((fb: any) => 
+            fb.category && 
+            fb.category.startsWith('request-') && 
+            fb.status === 'pending'
+          );
+        
+        if (pendingRequests.length > 0) {
+          // Map requests to activities
+          const requestActivities = pendingRequests.map((request: any) => {
+            // Find the employee name
+            const employee = employeesData.find(emp => emp.id === request.employeeId);
+            
+            return {
+              type: 'request' as 'request',
+              message: `${request.requestedBy || 'An employee'} requested ${request.category.replace('request-', '')} feedback`,
+              timestamp: new Date(request.createdAt),
+              employeeName: employee?.name || 'Unknown',
+              employeeId: request.employeeId,
+              requestContent: request.requestDescription || request.content
+            };
+          });
+          
+          // Add requests to recent activities
+          setRecentActivity(prev => {
+            // Filter out duplicate requests (by employeeId and message)
+            const uniqueRequests = requestActivities.filter(req => 
+              !prev.some(existing => 
+                existing.type === 'request' && 
+                existing.employeeId === req.employeeId &&
+                existing.message === req.message
+              )
+            );
+            
+            return [...uniqueRequests, ...prev].sort((a, b) => 
+              b.timestamp.getTime() - a.timestamp.getTime()
+            ).slice(0, 10);
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching feedback requests:", error);
     }
   };
 
@@ -1029,11 +1185,12 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleFeedbackSubmit = async (type: string, feedback: string) => {
+  const handleFeedbackSubmit = async (type: string, feedback: string, isResponse: boolean = false, requestDescription: string = '') => {
     if (!selectedEmployee) return;
     
     setLoading(true);
     try {
+      // Create the feedback entry
       await createFeedback({
         employeeId: selectedEmployee.id,
         reviewerId: user?.uid || '',
@@ -1041,16 +1198,54 @@ const AdminDashboard = () => {
         content: feedback,
         rating: 0, // Not applicable for general feedback
         category: type,
-        createdAt: new Date()
+        createdAt: new Date(),
+        isResponseToRequest: isResponse
       });
+      
+      // If this is a response to a request, update the request status
+      if (isResponse && requestDescription) {
+        // Find the request and update its status
+        const feedbacksRef = ref(realtimeDb, 'feedbacks');
+        const requestQuery = query(
+          feedbacksRef, 
+          orderByChild('employeeId'), 
+          equalTo(selectedEmployee.id)
+        );
+        
+        const snapshot = await get(requestQuery);
+        if (snapshot.exists()) {
+          const feedbacks = snapshot.val();
+          const pendingRequests = Object.entries(feedbacks)
+            .filter(([_, fb]: [string, any]) => 
+              fb.category && 
+              fb.category.startsWith('request-') && 
+              fb.status === 'pending' &&
+              (fb.requestDescription === requestDescription || fb.content === requestDescription)
+            );
+          
+          if (pendingRequests.length > 0) {
+            // Update the status of the request
+            const [requestId] = pendingRequests[0];
+            const requestRef = ref(realtimeDb, `feedbacks/${requestId}`);
+            await update(requestRef, { status: 'responded' });
+          }
+        }
+      }
       
       // Add to recent activity
       setRecentActivity(prev => [{
         type: 'feedback',
-        message: `You provided ${type} feedback to ${selectedEmployee.name}`,
+        message: isResponse 
+          ? `You responded to a feedback request from ${selectedEmployee.name}`
+          : `You provided ${type} feedback to ${selectedEmployee.name}`,
         timestamp: new Date(),
         employeeName: selectedEmployee.name
       }, ...prev.slice(0, 4)]);
+      
+      showNotification('success', isResponse 
+        ? 'Response sent successfully'
+        : 'Feedback submitted successfully'
+      );
       
     } catch (err: any) {
       console.error('Error submitting feedback', err);
@@ -1175,7 +1370,7 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       // First delete the employee data from the Realtime Database
-      await deleteEmployee(selectedEmployee.id);
+      await deleteEmployeeFunction(selectedEmployee.id);
       
       // Then delete the user account
       await deleteUserAccount(selectedEmployee.userId);
@@ -1211,21 +1406,93 @@ const AdminDashboard = () => {
     return 'bg-red-500';
   };
 
+  // Notification handling functions
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    try {
+      await markNotificationAsRead(notificationId);
+      // The state will be updated via the subscription
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    if (!user) return;
+    
+    try {
+      await markAllNotificationsAsRead(user.uid);
+      // The state will be updated via the subscription
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900">
-      {/* Background elements */}
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 pb-10">
+      {/* Enhanced cosmic background with more visual elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Animated circles */}
+        {/* Large animated blobs */}
         <div className="absolute -top-20 -left-20 w-96 h-96 bg-blue-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
         <div className="absolute top-1/3 -right-20 w-96 h-96 bg-purple-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
         <div className="absolute bottom-20 left-40 w-72 h-72 bg-pink-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-blob animation-delay-4000" />
         
-        {/* Light beams */}
-        <div className="absolute top-0 left-1/4 w-1 h-full bg-gradient-to-b from-indigo-500/0 via-indigo-500/20 to-indigo-500/0 blur-lg" />
-        <div className="absolute top-0 right-1/3 w-1 h-full bg-gradient-to-b from-purple-500/0 via-purple-500/10 to-purple-500/0 blur-lg" />
+        {/* Large cosmic elements */}
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-600/10 rounded-full filter blur-3xl opacity-70 animate-cosmic-wave" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full filter blur-3xl opacity-60 animate-nebula-pulse" />
+        
+        {/* Galaxy/nebula elements with glow effect */}
+        <div className="absolute top-1/2 left-1/3 w-[300px] h-[300px] rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-600/5 filter blur-3xl opacity-40 animate-galaxy-spin animate-glow"></div>
+        <div className="absolute bottom-1/3 right-1/5 w-[400px] h-[400px] rounded-full bg-gradient-to-r from-blue-500/10 to-purple-600/5 filter blur-3xl opacity-30 animate-galaxy-spin animation-delay-3000 animate-glow"></div>
+        
+        {/* Light rays */}
+        <div className="absolute top-0 left-1/4 w-2 h-[100vh] bg-gradient-to-b from-indigo-500/0 via-indigo-500/5 to-indigo-500/0 blur-lg animate-light-ray"></div>
+        <div className="absolute top-0 right-1/3 w-1 h-[100vh] bg-gradient-to-b from-purple-500/0 via-purple-500/5 to-purple-500/0 blur-lg animate-light-ray animation-delay-3000"></div>
+        <div className="absolute top-0 left-2/3 w-1.5 h-[100vh] bg-gradient-to-b from-blue-500/0 via-blue-500/5 to-blue-500/0 blur-lg animate-light-ray animation-delay-5000"></div>
+        
+        {/* Twinkling stars - many different sizes and animations */}
+        <div className="absolute inset-0">
+          {/* Original stars */}
+          <div className="absolute top-1/5 left-1/4 w-1 h-1 bg-white rounded-full opacity-80 animate-pulse-slow" />
+          <div className="absolute top-1/3 left-1/2 w-1 h-1 bg-white rounded-full opacity-90 animate-pulse-slow animation-delay-2000" />
+          <div className="absolute top-2/3 left-1/3 w-1 h-1 bg-white rounded-full opacity-70 animate-pulse-slow animation-delay-4000" />
+          <div className="absolute top-1/6 right-1/4 w-1 h-1 bg-white rounded-full opacity-80 animate-pulse-slow animation-delay-6000" />
+          <div className="absolute bottom-1/3 right-1/5 w-1 h-1 bg-white rounded-full opacity-70 animate-pulse-slow" />
+          <div className="absolute bottom-1/4 left-1/6 w-1 h-1 bg-white rounded-full opacity-90 animate-pulse-slow animation-delay-8000" />
+          
+          {/* Additional twinkling stars */}
+          <div className="absolute top-[15%] left-[10%] w-1.5 h-1.5 bg-white rounded-full opacity-90 animate-twinkle" />
+          <div className="absolute top-[25%] left-[35%] w-0.5 h-0.5 bg-white rounded-full opacity-80 animate-twinkle animation-delay-1000" />
+          <div className="absolute top-[40%] left-[85%] w-1 h-1 bg-white rounded-full opacity-90 animate-twinkle animation-delay-2500" />
+          <div className="absolute top-[60%] left-[22%] w-0.5 h-0.5 bg-white rounded-full opacity-70 animate-twinkle-slow" />
+          <div className="absolute top-[75%] left-[65%] w-1 h-1 bg-white rounded-full opacity-90 animate-twinkle animation-delay-1500" />
+          <div className="absolute top-[10%] left-[75%] w-0.5 h-0.5 bg-white rounded-full opacity-80 animate-twinkle-slow animation-delay-3500" />
+          <div className="absolute top-[50%] left-[54%] w-1 h-1 bg-white rounded-full opacity-80 animate-twinkle animation-delay-5000" />
+          <div className="absolute top-[30%] left-[90%] w-1.5 h-1.5 bg-white rounded-full opacity-90 animate-twinkle-slow animation-delay-7000" />
+          <div className="absolute top-[85%] left-[40%] w-0.5 h-0.5 bg-white rounded-full opacity-70 animate-twinkle animation-delay-3000" />
+          <div className="absolute top-[20%] left-[60%] w-1 h-1 bg-white rounded-full opacity-80 animate-twinkle-slow animation-delay-9000" />
+          
+          {/* Glowing stars with halo effect */}
+          <div className="absolute top-[45%] left-[15%] w-1.5 h-1.5 bg-blue-200 rounded-full opacity-90 shadow-lg shadow-blue-500/50 animate-twinkle"></div>
+          <div className="absolute top-[15%] left-[45%] w-2 h-2 bg-purple-200 rounded-full opacity-90 shadow-lg shadow-purple-500/50 animate-twinkle-slow animation-delay-2000"></div>
+          <div className="absolute top-[65%] left-[80%] w-1.5 h-1.5 bg-indigo-200 rounded-full opacity-90 shadow-lg shadow-indigo-500/50 animate-twinkle animation-delay-4000"></div>
+        </div>
+        
+        {/* Floating particles */}
+        <div className="absolute top-[30%] left-[20%] w-1 h-1 bg-white/20 rounded-full animate-float-particle"></div>
+        <div className="absolute top-[60%] left-[70%] w-0.5 h-0.5 bg-white/30 rounded-full animate-float-particle animation-delay-2000"></div>
+        <div className="absolute top-[40%] left-[50%] w-1.5 h-1.5 bg-white/10 rounded-full animate-float-particle animation-delay-5000"></div>
+        <div className="absolute top-[20%] left-[80%] w-0.5 h-0.5 bg-white/20 rounded-full animate-float-particle animation-delay-3000"></div>
+        <div className="absolute top-[70%] left-[30%] w-1 h-1 bg-white/20 rounded-full animate-float-particle animation-delay-1500"></div>
+        
+        {/* Subtle cosmic waves */}
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 opacity-30 animate-aurora bg-size-200"></div>
+        
+        {/* Comet effect */}
+        <div className="absolute -top-20 -left-20 w-20 h-1 bg-white/40 rounded-full blur-sm transform rotate-45 animate-comet"></div>
+        <div className="absolute -bottom-20 -right-20 w-30 h-1.5 bg-blue-100/30 rounded-full blur-sm transform -rotate-45 animate-comet animation-delay-7000"></div>
       </div>
 
-      {/* Show notification if any */}
+      {/* Notification */}
       {notification && (
         <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 ${notification.type === 'error' ? 'bg-red-500/90' : 'bg-emerald-500/90'} text-white px-6 py-3 rounded-lg shadow-lg flex items-center`}>
           {notification.type === 'error' ? (
@@ -1255,13 +1522,20 @@ const AdminDashboard = () => {
                 <span className="ml-4 text-sm text-white/60">Welcome, {user.displayName || 'Admin'}</span>
               )}
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center text-white/80 hover:text-white glass-button py-1.5 px-3 rounded-lg my-auto text-sm"
-            >
-              <LogOut className="w-4 h-4 mr-1.5" />
-              Logout
-            </button>
+            <div className="flex items-center space-x-4">
+              <NotificationBell 
+                notifications={notifications} 
+                onMarkAsRead={handleMarkNotificationAsRead} 
+                onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+              />
+              <button
+                onClick={handleLogout}
+                className="flex items-center text-white/80 hover:text-white glass-button py-1.5 px-3 rounded-lg text-sm"
+              >
+                <LogOut className="w-4 h-4 mr-1.5" />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </nav>
@@ -1274,250 +1548,287 @@ const AdminDashboard = () => {
           </div>
         ) : (
           <>
-        {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="glass-card p-6 flex items-center">
-            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-              <Users className="w-6 h-6 text-blue-300" />
-            </div>
-            <div>
-              <div className="text-sm text-white/70">Total Employees</div>
-              <div className="text-2xl font-semibold text-white">{employees.length}</div>
-            </div>
-          </div>
-          
-          <div className="glass-card p-6 flex items-center">
-            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-              <BarChart4 className="w-6 h-6 text-emerald-300" />
-            </div>
-            <div>
-              <div className="text-sm text-white/70">Average Performance</div>
-              <div className="text-2xl font-semibold text-white">
+            {/* Stats Section */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="glass-card p-6 flex items-center">
+                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+                  <Users className="w-6 h-6 text-blue-300" />
+                </div>
+                <div>
+                  <div className="text-sm text-white/70">Total Employees</div>
+                  <div className="text-2xl font-semibold text-white">{employees.length}</div>
+                </div>
+              </div>
+              
+              <div className="glass-card p-6 flex items-center">
+                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+                  <BarChart4 className="w-6 h-6 text-emerald-300" />
+                </div>
+                <div>
+                  <div className="text-sm text-white/70">Average Performance</div>
+                  <div className="text-2xl font-semibold text-white">
                     {employees.length > 0 
                       ? Math.round(employees.reduce((sum, emp) => sum + (emp.performanceScore || 0), 0) / employees.length)
                       : 0}%
-              </div>
-            </div>
-          </div>
-          
-          <div className="glass-card p-6 flex items-center">
-            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-              <LineChart className="w-6 h-6 text-purple-300" />
-            </div>
-            <div>
-              <div className="text-sm text-white/70">Reviews Completed</div>
-              <div className="text-2xl font-semibold text-white">
-                    {employees.filter(emp => emp.performanceScore !== undefined).length}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card mb-8">
-          <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-white flex items-center">
-                <Sparkles className="w-5 h-5 mr-2 text-indigo-300" />
-                Employee Overview
-              </h2>
-                  <button 
-                    onClick={() => setShowAddEmployeeModal(true)}
-                    className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
-                  >
-                <PlusCircle className="w-4 h-4 mr-2" />
-                Add Employee
-              </button>
-            </div>
-            
-                {loading && employees.length > 0 ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
                   </div>
-                ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-white/10">
-                <thead>
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                      Position
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                      Performance
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                            Department
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                        {employees.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-8 text-center text-white/70">
-                              No employees found. Add your first employee to get started.
-                            </td>
-                          </tr>
-                        ) : (
-                          employees.map((employee) => (
-                    <tr key={employee.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                                  <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3 overflow-hidden">
-                                    {employee.photoURL ? (
-                                      <img src={employee.photoURL} alt={employee.name} className="w-full h-full object-cover" />
-                                    ) : (
-                            <UserCircle className="w-5 h-5 text-indigo-300" />
-                                    )}
-                          </div>
-                          <div className="text-sm font-medium text-white">{employee.name}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-white/80">{employee.position}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-full bg-white/10 rounded-full h-2 mr-2 max-w-[100px]">
-                            <div
-                                      className="h-full rounded-full bg-indigo-500" 
-                                      style={{ width: `${employee.performanceScore || 0}%` }}
-                            />
-                          </div>
-                                  <span className="text-sm text-white/80">{employee.performanceScore || 'N/A'}%</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
-                                {employee.department}
-                      </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
-                                <div className="flex space-x-2">
-                        <button
-                          onClick={() => {
-                                      setSelectedEmployee({
-                                        ...employee,
-                                        email: employee.email || '' // Ensure email is populated
-                                      });
-                            setShowReviewModal(true);
-                          }}
-                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white group"
-                                    title="Submit Performance Review"
-                        >
-                                    <Star className="w-4 h-4 group-hover:fill-yellow-400 transition-colors" />
-                        </button>
-                                  
-                        <button
-                          onClick={() => {
-                                      setSelectedEmployee({
-                                        ...employee,
-                                        email: employee.email || '' // Ensure email is populated
-                                      });
-                            setShowFeedbackModal(true);
-                          }}
-                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
-                                    title="Send Feedback"
-                        >
-                                    <MessageSquare className="w-4 h-4" />
-                        </button>
-                                  
-                                  <button
-                                    onClick={() => {
-                                      setSelectedEmployee({
-                                        ...employee,
-                                        email: employee.email || '' // Ensure email is populated
-                                      });
-                                      setShowGoalModal(true);
-                                    }}
-                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
-                                    title="Set Goal"
-                                  >
-                                    <FileText className="w-4 h-4" />
-                                  </button>
-                                  
-                                  <button
-                                    onClick={() => {
-                                      setSelectedEmployee({
-                                        ...employee,
-                                        email: employee.email || '' // Ensure email is populated
-                                      });
-                                      setShowEmployeeDetails(true);
-                                    }}
-                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
-                                    title="View Details"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                  </button>
-                                  
-                                  <button
-                                    onClick={() => {
-                                      setSelectedEmployee({
-                                        ...employee,
-                                        email: employee.email || '' // Ensure email is populated
-                                      });
-                                      setShowDeleteConfirmation(true);
-                                    }}
-                                    className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white hover:text-red-400"
-                                    title="Delete Employee"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                      </td>
-                    </tr>
-                          ))
-                        )}
-                </tbody>
-              </table>
+                </div>
+              </div>
+              
+              <div className="glass-card p-6 flex items-center">
+                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+                  <LineChart className="w-6 h-6 text-purple-300" />
+                </div>
+                <div>
+                  <div className="text-sm text-white/70">Reviews Completed</div>
+                  <div className="text-2xl font-semibold text-white">
+                    {employees.filter(emp => emp.performanceScore !== undefined).length}
+                  </div>
+                </div>
+              </div>
             </div>
-                )}
-          </div>
-        </div>
-        
-        <div className="glass-card">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-              <AlertCircle className="w-5 h-5 mr-2 text-indigo-300" />
-              Recent Activities
-            </h2>
+
+            {/* Employee Overview and Leaderboard */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+              <div className="lg:col-span-2">
+                <div className="glass-card">
+                  <div className="p-6">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-semibold text-white flex items-center">
+                        <Sparkles className="w-5 h-5 mr-2 text-indigo-300" />
+                        Employee Overview
+                      </h2>
+                      <button 
+                        onClick={() => setShowAddEmployeeModal(true)}
+                        className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
+                      >
+                        <PlusCircle className="w-4 h-4 mr-2" />
+                        Add Employee
+                      </button>
+                    </div>
+                    
+                    {loading && employees.length > 0 ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-white/10">
+                          <thead>
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                                Name
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                                Position
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                                Performance
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                                Department
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/10">
+                            {employees.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="px-6 py-8 text-center text-white/70">
+                                  No employees found. Add your first employee to get started.
+                                </td>
+                              </tr>
+                            ) : (
+                              employees.map((employee) => (
+                                <tr key={employee.id} className="hover:bg-white/5 transition-colors">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex items-center">
+                                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3 overflow-hidden">
+                                        {employee.photoURL ? (
+                                          <img src={employee.photoURL} alt={employee.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <UserCircle className="w-5 h-5 text-indigo-300" />
+                                        )}
+                                      </div>
+                                      <div className="text-sm font-medium text-white">{employee.name}</div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm text-white/80">{employee.position}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex items-center">
+                                      <div className="w-full bg-white/10 rounded-full h-2 mr-2 max-w-[100px]">
+                                        <div
+                                          className="h-full rounded-full bg-indigo-500" 
+                                          style={{ width: `${employee.performanceScore || 0}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-sm text-white/80">{employee.performanceScore || 'N/A'}%</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
+                                    {employee.department}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
+                                    <div className="flex space-x-2">
+                                      <button
+                                        onClick={() => {
+                                          setSelectedEmployee({
+                                            ...employee,
+                                            email: employee.email || '' // Ensure email is populated
+                                          });
+                                          setShowReviewModal(true);
+                                        }}
+                                        className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white group"
+                                        title="Submit Performance Review"
+                                      >
+                                        <Star className="w-4 h-4 group-hover:fill-yellow-400 transition-colors" />
+                                      </button>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setSelectedEmployee({
+                                            ...employee,
+                                            email: employee.email || '' // Ensure email is populated
+                                          });
+                                          setShowFeedbackModal(true);
+                                        }}
+                                        className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
+                                        title="Send Feedback"
+                                      >
+                                        <MessageSquare className="w-4 h-4" />
+                                      </button>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setSelectedEmployee({
+                                            ...employee,
+                                            email: employee.email || '' // Ensure email is populated
+                                          });
+                                          setShowGoalModal(true);
+                                        }}
+                                        className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
+                                        title="Set Goal"
+                                      >
+                                        <FileText className="w-4 h-4" />
+                                      </button>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setSelectedEmployee({
+                                            ...employee,
+                                            email: employee.email || '' // Ensure email is populated
+                                          });
+                                          setShowEmployeeDetails(true);
+                                        }}
+                                        className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
+                                        title="View Details"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          setSelectedEmployee({
+                                            ...employee,
+                                            email: employee.email || '' // Ensure email is populated
+                                          });
+                                          setShowDeleteConfirmation(true);
+                                        }}
+                                        className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white hover:text-red-400"
+                                        title="Delete Employee"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="lg:col-span-1">
+                <Leaderboard employees={employees} limit={5} />
+              </div>
+            </div>
+
+            <div className="glass-card">
+              <div className="p-6">
+                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+                  <AlertCircle className="w-5 h-5 mr-2 text-indigo-300" />
+                  Recent Activities
+                </h2>
                 {recentActivity.length === 0 ? (
                   <div className="glass p-8 rounded-xl text-center text-white/70">
                     No recent activities found. Activities will appear here as you interact with employees.
                   </div>
                 ) : (
-            <div className="space-y-4">
+                  <div className="space-y-4">
                     {recentActivity.map((activity, i) => (
-                <div key={i} className="glass p-4 rounded-xl hover:bg-white/10 transition-colors">
-                  <div className="flex items-start">
-                          <div className="flex">
+                      <div key={i} className="glass p-4 rounded-xl hover:bg-white/10 transition-colors">
+                        <div className="flex items-start">
+                          <div className="flex flex-1">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
                               activity.type === 'review' ? 'bg-blue-500/20' : 
                               activity.type === 'feedback' ? 'bg-purple-500/20' : 
                               activity.type === 'goal' ? 'bg-emerald-500/20' :
+                              activity.type === 'request' ? 'bg-amber-500/20' :
                               'bg-indigo-500/20'
                             }`}>
                               {activity.type === 'review' && <Star className="w-5 h-5 text-blue-300" />}
                               {activity.type === 'feedback' && <MessageSquare className="w-5 h-5 text-purple-300" />}
                               {activity.type === 'employee' && <UserCircle className="w-5 h-5 text-indigo-300" />}
                               {activity.type === 'goal' && <FileText className="w-5 h-5 text-emerald-300" />}
-                    </div>
-                    <div>
-                              <p className="text-white/90">{activity.message}</p>
-                      <p className="text-white/50 text-sm mt-1">
-                                {formatRelativeTime(activity.timestamp)}
-                      </p>
+                              {activity.type === 'request' && <AlertCircle className="w-5 h-5 text-amber-300" />}
                             </div>
-                    </div>
+                            <div className="flex-1">
+                              <p className="text-white/90">{activity.message}</p>
+                              <p className="text-white/50 text-sm mt-1">
+                                {formatRelativeTime(activity.timestamp)}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {activity.type === 'request' && (
+                            <button
+                              onClick={() => {
+                                // Find the employee
+                                const employee = employees.find(emp => emp.id === activity.employeeId);
+                                if (employee) {
+                                  setSelectedEmployee({
+                                    ...employee,
+                                    email: employee.email || '' // Ensure email is populated
+                                  });
+                                  setShowFeedbackModal(true);
+                                }
+                              }}
+                              className="px-4 py-1.5 glass-button-primary rounded-lg text-xs flex items-center"
+                            >
+                              <MessageSquare className="w-3 h-3 mr-1.5" />
+                              Respond
+                            </button>
+                          )}
+                        </div>
+                        
+                        {activity.type === 'request' && activity.requestContent && (
+                          <div className="mt-2 ml-13 text-sm bg-white/5 p-2 rounded text-white/70">
+                            "{activity.requestContent}"
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
                 )}
-          </div>
-        </div>
+              </div>
+            </div>
           </>
         )}
       </main>
@@ -1577,9 +1888,18 @@ const formatRelativeTime = (date: Date) => {
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   
   if (diffInSeconds < 60) return 'just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+  if (diffInSeconds < 3600) {
+    const mins = Math.floor(diffInSeconds / 60);
+    return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
+  }
+  if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600);
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  }
+  if (diffInSeconds < 604800) {
+    const days = Math.floor(diffInSeconds / 86400);
+    return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+  }
   
   return new Date(date).toLocaleDateString();
 };

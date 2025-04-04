@@ -19,7 +19,8 @@ import {
   Mail,
   Calendar,
   Save,
-  CheckCircle
+  CheckCircle,
+  Send
 } from 'lucide-react';
 import { 
   getEmployeeByUserId, 
@@ -28,11 +29,17 @@ import {
   subscribeToGoals,
   subscribeToPerformanceMetrics,
   getAllEmployees,
-  updateEmployee
+  updateEmployee,
+  createFeedback,
+  subscribeToNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead
 } from '../services/realtimeDbService';
-import { Employee, Feedback, Goal, Metric, PerformanceMetric } from '../types/models';
+import { Employee, Feedback, Goal, Metric, PerformanceMetric, Notification } from '../types/models';
 import FeedbackSection from './FeedbackSection';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import Leaderboard from './Leaderboard';
+import NotificationBell from './NotificationBell';
 
 // Component to display a metric with a progress bar
 const MetricsCard: React.FC<{ metric: Metric }> = ({ metric }) => {
@@ -246,6 +253,139 @@ const ProfileEditModal = ({ employee, onClose, onSave }) => {
   );
 };
 
+// RequestFeedbackModal Component
+const RequestFeedbackModal = ({ employee, onClose, onSubmit }) => {
+  const [feedbackType, setFeedbackType] = useState('general');
+  const [description, setDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      await onSubmit(feedbackType, description);
+      
+      setNotification({
+        show: true,
+        message: 'Feedback request sent successfully!',
+        type: 'success'
+      });
+      
+      // Close after a short delay
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Error requesting feedback:', error);
+      setNotification({
+        show: true,
+        message: 'Failed to send feedback request',
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="glass-card max-w-md w-full p-1 animate-scale-in">
+        <div className="rounded-xl p-6 relative overflow-hidden">
+          {/* Shimmering border effect */}
+          <div className="absolute inset-0 animated-gradient opacity-20"></div>
+          
+          <div className="relative z-10">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center mr-3">
+                  <MessageSquare className="w-6 h-6 text-purple-300" />
+                </div>
+                <h3 className="text-xl font-semibold text-white">Request Feedback</h3>
+              </div>
+              <button 
+                onClick={onClose} 
+                className="text-white/70 hover:text-white rounded-full hover:bg-white/10 p-1 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {notification.show && (
+              <div className={`mb-4 p-3 ${notification.type === 'success' ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-red-500/20 border-red-500/30'} border rounded-lg text-white text-sm flex items-center`}>
+                {notification.type === 'success' ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-400 mr-2" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-400 mr-2" />
+                )}
+                <span>{notification.message}</span>
+              </div>
+            )}
+            
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Feedback Type</label>
+                <select
+                  value={feedbackType}
+                  onChange={(e) => setFeedbackType(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input"
+                >
+                  <option value="general" className="bg-gray-800 text-white">General Feedback</option>
+                  <option value="performance" className="bg-gray-800 text-white">Performance Review</option>
+                  <option value="project" className="bg-gray-800 text-white">Project Specific</option>
+                  <option value="career" className="bg-gray-800 text-white">Career Development</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input"
+                  rows={4}
+                  placeholder="Describe what you would like feedback on..."
+                  required
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 glass-button rounded-lg"
+                  disabled={isLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 glass-button-primary rounded-lg flex items-center"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Request Feedback
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -261,6 +401,9 @@ const Dashboard = () => {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [showRequestFeedback, setShowRequestFeedback] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -359,6 +502,19 @@ const Dashboard = () => {
             unsubscribeMetrics();
           };
         }
+
+        // Fetch all employees for the leaderboard
+        try {
+          console.log("Fetching all employees for leaderboard...");
+          const employeesData = await getAllEmployees();
+          console.log("Got employeesData for leaderboard:", employeesData, "length:", employeesData.length);
+          setAllEmployees(employeesData);
+          console.log("State updated with all employees");
+        } catch (error) {
+          console.error('Error fetching all employees for leaderboard:', error);
+          // Not critical, so just log the error and continue
+        }
+        
       } catch (err: any) {
         console.error('Error fetching employee data:', err);
         setError('Failed to load your profile data. Please try again later.');
@@ -368,6 +524,22 @@ const Dashboard = () => {
     };
     
     fetchEmployeeData();
+  }, [user]);
+
+  // Add a new useEffect for notifications
+  useEffect(() => {
+    let unsubscribeNotifications = () => {};
+
+    if (user) {
+      // Subscribe to notifications for this user
+      unsubscribeNotifications = subscribeToNotifications(user.uid, (notificationsData) => {
+        setNotifications(notificationsData);
+      });
+    }
+
+    return () => {
+      unsubscribeNotifications();
+    };
   }, [user]);
 
   // Handle profile photo upload
@@ -541,6 +713,64 @@ const Dashboard = () => {
     }
   };
 
+  const handleRequestFeedback = async (feedbackType: string, description: string) => {
+    if (!employee || !user) return;
+    
+    try {
+      // Create a feedback request
+      await createFeedback({
+        employeeId: employee.id,
+        reviewerId: "", // Will be filled by admin who responds
+        reviewerName: "", // Will be filled by admin who responds
+        content: description,
+        rating: 0, // Not applicable for feedback requests
+        category: `request-${feedbackType}`, // Mark as a request
+        createdAt: new Date(),
+        requestedBy: user.displayName || 'Employee',
+        requestDescription: description,
+        status: 'pending' // Status for tracking requests
+      });
+      
+      // Show success notification
+      setNotification({
+        show: true,
+        message: 'Your feedback request has been submitted!',
+        type: 'success'
+      });
+      
+      // Close modal
+      setShowRequestFeedback(false);
+    } catch (error) {
+      console.error('Error submitting feedback request:', error);
+      setNotification({
+        show: true,
+        message: 'Failed to submit feedback request. Please try again.',
+        type: 'error'
+      });
+    }
+  };
+
+  // Notification handling functions
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    try {
+      await markNotificationAsRead(notificationId);
+      // The state will be updated via the subscription
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    if (!user) return;
+    
+    try {
+      await markAllNotificationsAsRead(user.uid);
+      // The state will be updated via the subscription
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 flex items-center justify-center">
@@ -592,11 +822,67 @@ const Dashboard = () => {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900">
-      {/* Background elements */}
+      {/* Enhanced cosmic background with more visual elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Large animated blobs */}
         <div className="absolute -top-20 -left-20 w-96 h-96 bg-blue-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
         <div className="absolute top-1/3 -right-20 w-96 h-96 bg-purple-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
         <div className="absolute bottom-20 left-40 w-72 h-72 bg-pink-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-blob animation-delay-4000" />
+        
+        {/* Large cosmic elements */}
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-600/10 rounded-full filter blur-3xl opacity-70 animate-cosmic-wave" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full filter blur-3xl opacity-60 animate-nebula-pulse" />
+        
+        {/* Galaxy/nebula elements with glow effect */}
+        <div className="absolute top-1/2 left-1/3 w-[300px] h-[300px] rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-600/5 filter blur-3xl opacity-40 animate-galaxy-spin animate-glow"></div>
+        <div className="absolute bottom-1/3 right-1/5 w-[400px] h-[400px] rounded-full bg-gradient-to-r from-blue-500/10 to-purple-600/5 filter blur-3xl opacity-30 animate-galaxy-spin animation-delay-3000 animate-glow"></div>
+        
+        {/* Light rays */}
+        <div className="absolute top-0 left-1/4 w-2 h-[100vh] bg-gradient-to-b from-indigo-500/0 via-indigo-500/5 to-indigo-500/0 blur-lg animate-light-ray"></div>
+        <div className="absolute top-0 right-1/3 w-1 h-[100vh] bg-gradient-to-b from-purple-500/0 via-purple-500/5 to-purple-500/0 blur-lg animate-light-ray animation-delay-3000"></div>
+        <div className="absolute top-0 left-2/3 w-1.5 h-[100vh] bg-gradient-to-b from-blue-500/0 via-blue-500/5 to-blue-500/0 blur-lg animate-light-ray animation-delay-5000"></div>
+        
+        {/* Twinkling stars - many different sizes and animations */}
+        <div className="absolute inset-0">
+          {/* Original stars */}
+          <div className="absolute top-1/5 left-1/4 w-1 h-1 bg-white rounded-full opacity-80 animate-pulse-slow" />
+          <div className="absolute top-1/3 left-1/2 w-1 h-1 bg-white rounded-full opacity-90 animate-pulse-slow animation-delay-2000" />
+          <div className="absolute top-2/3 left-1/3 w-1 h-1 bg-white rounded-full opacity-70 animate-pulse-slow animation-delay-4000" />
+          <div className="absolute top-1/6 right-1/4 w-1 h-1 bg-white rounded-full opacity-80 animate-pulse-slow animation-delay-6000" />
+          <div className="absolute bottom-1/3 right-1/5 w-1 h-1 bg-white rounded-full opacity-70 animate-pulse-slow" />
+          <div className="absolute bottom-1/4 left-1/6 w-1 h-1 bg-white rounded-full opacity-90 animate-pulse-slow animation-delay-8000" />
+          
+          {/* Additional twinkling stars */}
+          <div className="absolute top-[15%] left-[10%] w-1.5 h-1.5 bg-white rounded-full opacity-90 animate-twinkle" />
+          <div className="absolute top-[25%] left-[35%] w-0.5 h-0.5 bg-white rounded-full opacity-80 animate-twinkle animation-delay-1000" />
+          <div className="absolute top-[40%] left-[85%] w-1 h-1 bg-white rounded-full opacity-90 animate-twinkle animation-delay-2500" />
+          <div className="absolute top-[60%] left-[22%] w-0.5 h-0.5 bg-white rounded-full opacity-70 animate-twinkle-slow" />
+          <div className="absolute top-[75%] left-[65%] w-1 h-1 bg-white rounded-full opacity-90 animate-twinkle animation-delay-1500" />
+          <div className="absolute top-[10%] left-[75%] w-0.5 h-0.5 bg-white rounded-full opacity-80 animate-twinkle-slow animation-delay-3500" />
+          <div className="absolute top-[50%] left-[54%] w-1 h-1 bg-white rounded-full opacity-80 animate-twinkle animation-delay-5000" />
+          <div className="absolute top-[30%] left-[90%] w-1.5 h-1.5 bg-white rounded-full opacity-90 animate-twinkle-slow animation-delay-7000" />
+          <div className="absolute top-[85%] left-[40%] w-0.5 h-0.5 bg-white rounded-full opacity-70 animate-twinkle animation-delay-3000" />
+          <div className="absolute top-[20%] left-[60%] w-1 h-1 bg-white rounded-full opacity-80 animate-twinkle-slow animation-delay-9000" />
+          
+          {/* Glowing stars with halo effect */}
+          <div className="absolute top-[45%] left-[15%] w-1.5 h-1.5 bg-blue-200 rounded-full opacity-90 shadow-lg shadow-blue-500/50 animate-twinkle"></div>
+          <div className="absolute top-[15%] left-[45%] w-2 h-2 bg-purple-200 rounded-full opacity-90 shadow-lg shadow-purple-500/50 animate-twinkle-slow animation-delay-2000"></div>
+          <div className="absolute top-[65%] left-[80%] w-1.5 h-1.5 bg-indigo-200 rounded-full opacity-90 shadow-lg shadow-indigo-500/50 animate-twinkle animation-delay-4000"></div>
+        </div>
+        
+        {/* Floating particles */}
+        <div className="absolute top-[30%] left-[20%] w-1 h-1 bg-white/20 rounded-full animate-float-particle"></div>
+        <div className="absolute top-[60%] left-[70%] w-0.5 h-0.5 bg-white/30 rounded-full animate-float-particle animation-delay-2000"></div>
+        <div className="absolute top-[40%] left-[50%] w-1.5 h-1.5 bg-white/10 rounded-full animate-float-particle animation-delay-5000"></div>
+        <div className="absolute top-[20%] left-[80%] w-0.5 h-0.5 bg-white/20 rounded-full animate-float-particle animation-delay-3000"></div>
+        <div className="absolute top-[70%] left-[30%] w-1 h-1 bg-white/20 rounded-full animate-float-particle animation-delay-1500"></div>
+        
+        {/* Subtle cosmic waves */}
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 opacity-30 animate-aurora bg-size-200"></div>
+        
+        {/* Comet effect */}
+        <div className="absolute -top-20 -left-20 w-20 h-1 bg-white/40 rounded-full blur-sm transform rotate-45 animate-comet"></div>
+        <div className="absolute -bottom-20 -right-20 w-30 h-1.5 bg-blue-100/30 rounded-full blur-sm transform -rotate-45 animate-comet animation-delay-7000"></div>
       </div>
 
       {/* Notification */}
@@ -626,13 +912,20 @@ const Dashboard = () => {
                 </span>
               )}
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center text-white/80 hover:text-white glass-button py-1.5 px-3 rounded-lg my-auto text-sm"
-            >
-              <LogOut className="w-4 h-4 mr-1.5" />
-              Logout
-            </button>
+            <div className="flex items-center space-x-4">
+              <NotificationBell 
+                notifications={notifications} 
+                onMarkAsRead={handleMarkNotificationAsRead} 
+                onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+              />
+              <button
+                onClick={handleLogout}
+                className="flex items-center text-white/80 hover:text-white glass-button py-1.5 px-3 rounded-lg text-sm"
+              >
+                <LogOut className="w-4 h-4 mr-1.5" />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </nav>
@@ -749,6 +1042,17 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+          
+          {/* Add Request Feedback button */}
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={() => setShowRequestFeedback(true)}
+              className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
+            >
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Request Feedback
+            </button>
+          </div>
         </div>
 
         {/* Employee profile summary */}
@@ -784,55 +1088,66 @@ const Dashboard = () => {
         </div>
 
         {/* Goals and Feedback */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="glass-card p-6">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
-              <FileText className="w-5 h-5 mr-2 text-indigo-300" />
-              Goals & Objectives
-            </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="glass-card p-6">
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-indigo-300" />
+                Goals & Objectives
+              </h2>
+              
+              {goals.length === 0 ? (
+                <div className="glass p-6 rounded-xl text-center">
+                  <p className="text-white/70">No active goals found. Your manager will assign goals soon.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {goals.map((goal) => (
+                    <div key={goal.id} className="glass p-4 rounded-xl hover:bg-white/10 transition-all duration-300">
+                      <h3 className="text-white font-medium mb-1">{goal.title}</h3>
+                      <p className="text-white/70 text-sm mb-3">{goal.description}</p>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-white/50">Progress</span>
+                        <span 
+                          className={`px-2 py-0.5 rounded-full text-xs ${
+                            goal.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300' :
+                            goal.status === 'in-progress' ? 'bg-blue-500/20 text-blue-300' :
+                            'bg-amber-500/20 text-amber-300'
+                          }`}
+                        >
+                          {goal.status.charAt(0).toUpperCase() + goal.status.slice(1)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-1.5">
+                        <div 
+                          className={`h-full rounded-full ${
+                            goal.status === 'completed' ? 'bg-emerald-500' :
+                            goal.status === 'in-progress' ? 'bg-blue-500' :
+                            'bg-amber-500'
+                          }`}
+                          style={{ 
+                            width: `${goal.status === 'completed' ? 100 : goal.status === 'in-progress' ? 50 : 10}%` 
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             
-            {goals.length === 0 ? (
-              <div className="glass p-6 rounded-xl text-center">
-                <p className="text-white/70">No active goals found. Your manager will assign goals soon.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {goals.map((goal) => (
-                  <div key={goal.id} className="glass p-4 rounded-xl hover:bg-white/10 transition-all duration-300">
-                    <h3 className="text-white font-medium mb-1">{goal.title}</h3>
-                    <p className="text-white/70 text-sm mb-3">{goal.description}</p>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-white/50">Progress</span>
-                      <span 
-                        className={`px-2 py-0.5 rounded-full text-xs ${
-                          goal.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300' :
-                          goal.status === 'in-progress' ? 'bg-blue-500/20 text-blue-300' :
-                          'bg-amber-500/20 text-amber-300'
-                        }`}
-                      >
-                        {goal.status.charAt(0).toUpperCase() + goal.status.slice(1)}
-                      </span>
-                    </div>
-                    <div className="w-full bg-white/10 rounded-full h-1.5">
-                      <div 
-                        className={`h-full rounded-full ${
-                          goal.status === 'completed' ? 'bg-emerald-500' :
-                          goal.status === 'in-progress' ? 'bg-blue-500' :
-                          'bg-amber-500'
-                        }`}
-                        style={{ 
-                          width: `${goal.status === 'completed' ? 100 : goal.status === 'in-progress' ? 50 : 10}%` 
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <FeedbackSection feedbacks={feedbacks} />
           </div>
           
-          <FeedbackSection feedbacks={feedbacks} />
-      </div>
+          <div className="md:col-span-1">
+            {console.log("Rendering leaderboard with employees:", allEmployees)}
+            <Leaderboard 
+              employees={allEmployees} 
+              currentEmployeeId={employee?.id} 
+              limit={5}
+            />
+          </div>
+        </div>
       </main>
       
       {/* Profile Edit Modal */}
@@ -841,6 +1156,15 @@ const Dashboard = () => {
           employee={employee}
           onClose={() => setShowEditProfile(false)}
           onSave={handleProfileUpdate}
+        />
+      )}
+
+      {/* Request Feedback Modal */}
+      {showRequestFeedback && (
+        <RequestFeedbackModal 
+          employee={employee}
+          onClose={() => setShowRequestFeedback(false)}
+          onSubmit={handleRequestFeedback}
         />
       )}
     </div>

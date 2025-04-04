@@ -66,4 +66,16 @@ export interface PerformanceMetric {
   metric: string;
   value: number;
   date: Date | string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'feedback' | 'goal' | 'review' | 'request' | 'system';
+  read: boolean;
+  createdAt: any; // Firebase timestamp
+  relatedItemId?: string;
+  relatedItemType?: string;
 } 

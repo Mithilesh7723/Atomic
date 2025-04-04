@@ -14,7 +14,7 @@ import {
   DataSnapshot 
 } from 'firebase/database';
 import { realtimeDb } from '../config/firebase';
-import { User, Employee, Goal, Feedback, Department, PerformanceMetric } from '../types/models';
+import { User, Employee, Goal, Feedback, Department, PerformanceMetric, Notification } from '../types/models';
 
 // Utility function to handle database errors
 const handleDatabaseError = (error: any, operation: string): never => {
@@ -49,16 +49,33 @@ export const getUserById = async (userId: string) => {
 
 // Employee Management
 export const getAllEmployees = async (): Promise<Employee[]> => {
+  console.log("getAllEmployees called");
   const employeesRef = ref(realtimeDb, 'employees');
-  const snapshot = await get(employeesRef);
+  console.log("Reference created for 'employees' path");
   
-  if (!snapshot.exists()) return [];
-  
-  const employees = snapshot.val();
-  return Object.keys(employees).map(key => ({
-    ...employees[key],
-    id: key
-  }));
+  try {
+    const snapshot = await get(employeesRef);
+    console.log("Snapshot received, exists:", snapshot.exists());
+    
+    if (!snapshot.exists()) {
+      console.log("No employees found in database");
+      return [];
+    }
+    
+    const employees = snapshot.val();
+    console.log("Raw employees data:", employees);
+    
+    const formattedEmployees = Object.keys(employees).map(key => ({
+      ...employees[key],
+      id: key
+    }));
+    
+    console.log("Formatted employees:", formattedEmployees.length);
+    return formattedEmployees;
+  } catch (error) {
+    console.error("Error in getAllEmployees:", error);
+    throw error;
+  }
 };
 
 export const getEmployeeById = async (employeeId: string): Promise<Employee | null> => {
@@ -195,6 +212,34 @@ export const createGoal = async (goalData: Omit<Goal, 'id'>): Promise<Goal> => {
   };
   
   await set(newGoalRef, goal);
+  
+  // Create notification for the employee
+  try {
+    // Get employee data to get the user ID
+    const employeeRef = ref(realtimeDb, `employees/${goalData.employeeId}`);
+    const employeeSnapshot = await get(employeeRef);
+    
+    if (employeeSnapshot.exists()) {
+      const employee = employeeSnapshot.val();
+      
+      if (employee.userId) {
+        await createNotification({
+          userId: employee.userId,
+          title: 'New Goal Assigned',
+          message: `A new goal has been assigned to you: ${goalData.title}`,
+          type: 'goal',
+          read: false,
+          createdAt: new Date(),
+          relatedItemId: goalId,
+          relatedItemType: 'goal'
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error creating notification for goal:', error);
+    // Don't throw here - we don't want to fail the goal creation if notification fails
+  }
+  
   return goal;
 };
 
@@ -260,6 +305,66 @@ export const createFeedback = async (feedbackData: Omit<Feedback, 'id'>): Promis
   };
   
   await set(newFeedbackRef, feedback);
+  
+  // Create notification based on the type of feedback
+  try {
+    // Get employee data to get the user ID
+    const employeeRef = ref(realtimeDb, `employees/${feedbackData.employeeId}`);
+    const employeeSnapshot = await get(employeeRef);
+    
+    if (employeeSnapshot.exists()) {
+      const employee = employeeSnapshot.val();
+      
+      if (employee.userId) {
+        // Handle different notification types
+        if (feedbackData.category.startsWith('request-')) {
+          // This is a feedback request from an employee to admin
+          // Notify admins (in a real app, you'd handle admin notifications differently)
+          const adminUsersRef = ref(realtimeDb, 'users');
+          const adminUsersQuery = query(adminUsersRef, orderByChild('role'), equalTo('admin'));
+          const adminsSnapshot = await get(adminUsersQuery);
+          
+          if (adminsSnapshot.exists()) {
+            const admins = adminsSnapshot.val();
+            
+            // Create notification for each admin
+            const adminNotificationPromises = Object.keys(admins).map(adminId => 
+              createNotification({
+                userId: adminId,
+                title: 'New Feedback Request',
+                message: `${employee.name} has requested feedback: ${feedbackData.content}`,
+                type: 'request',
+                read: false,
+                createdAt: new Date(),
+                relatedItemId: feedbackId,
+                relatedItemType: 'feedback'
+              })
+            );
+            
+            await Promise.all(adminNotificationPromises);
+          }
+        } else if (feedbackData.reviewerId) {
+          // This is feedback or a review given to an employee
+          await createNotification({
+            userId: employee.userId,
+            title: feedbackData.category === 'performance review' ? 'New Performance Review' : 'New Feedback',
+            message: feedbackData.category === 'performance review' 
+              ? `You have received a new performance review` 
+              : `You have received new feedback: ${feedbackData.content.substring(0, 50)}${feedbackData.content.length > 50 ? '...' : ''}`,
+            type: feedbackData.category === 'performance review' ? 'review' : 'feedback',
+            read: false,
+            createdAt: new Date(),
+            relatedItemId: feedbackId,
+            relatedItemType: 'feedback'
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error creating notification for feedback:', error);
+    // Don't throw here - we don't want to fail the feedback creation if notification fails
+  }
+  
   return feedback;
 };
 
@@ -436,6 +541,34 @@ export const createPerformanceMetric = async (metricData: Omit<PerformanceMetric
   };
   
   await set(newMetricRef, metric);
+  
+  // Create notification for the employee
+  try {
+    // Get employee data to get the user ID
+    const employeeRef = ref(realtimeDb, `employees/${metricData.employeeId}`);
+    const employeeSnapshot = await get(employeeRef);
+    
+    if (employeeSnapshot.exists()) {
+      const employee = employeeSnapshot.val();
+      
+      if (employee.userId) {
+        await createNotification({
+          userId: employee.userId,
+          title: 'Performance Update',
+          message: `Your ${metricData.metric} performance has been updated to ${metricData.value}%`,
+          type: 'review',
+          read: false,
+          createdAt: new Date(),
+          relatedItemId: metricId,
+          relatedItemType: 'metric'
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error creating notification for performance metric:', error);
+    // Don't throw here - we don't want to fail the metric creation if notification fails
+  }
+  
   return metric;
 };
 
@@ -509,4 +642,175 @@ export const subscribeToPerformanceMetrics = (employeeId: string, callback: (met
     console.error("Error setting up performance metrics subscription, using fallback:", error);
     return subscribeToPerformanceMetricsFallback(employeeId, callback);
   }
+};
+
+// New Notification interface
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'feedback' | 'goal' | 'review' | 'request' | 'system';
+  read: boolean;
+  createdAt: any; // Firebase timestamp
+  relatedItemId?: string;
+  relatedItemType?: string;
+}
+
+// Create a new notification
+export const createNotification = async (notificationData: Omit<Notification, 'id'>): Promise<Notification> => {
+  const notificationsRef = ref(realtimeDb, 'notifications');
+  const newNotificationRef = push(notificationsRef);
+  const notificationId = newNotificationRef.key as string;
+  
+  const notification: Notification = {
+    ...notificationData,
+    id: notificationId,
+  };
+  
+  await set(newNotificationRef, notification);
+  return notification;
+};
+
+// Get all notifications for a specific user
+export const getNotificationsByUserId = async (userId: string): Promise<Notification[]> => {
+  const notificationsRef = ref(realtimeDb, 'notifications');
+  const notificationsQuery = query(
+    notificationsRef,
+    orderByChild('userId'),
+    equalTo(userId)
+  );
+  
+  const snapshot = await get(notificationsQuery);
+  if (!snapshot.exists()) return [];
+  
+  const notifications: Notification[] = [];
+  snapshot.forEach((childSnapshot) => {
+    const notification = childSnapshot.val() as Notification;
+    notifications.push(notification);
+  });
+  
+  // Sort by creation date, newest first
+  return notifications.sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return dateB.getTime() - dateA.getTime();
+  });
+};
+
+// Mark a notification as read
+export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
+  const notificationRef = ref(realtimeDb, `notifications/${notificationId}`);
+  await update(notificationRef, { read: true });
+};
+
+// Mark all notifications for a user as read
+export const markAllNotificationsAsRead = async (userId: string): Promise<void> => {
+  const notifications = await getNotificationsByUserId(userId);
+  
+  const updatePromises = notifications
+    .filter(notification => !notification.read)
+    .map(notification => 
+      update(ref(realtimeDb, `notifications/${notification.id}`), { read: true })
+    );
+  
+  await Promise.all(updatePromises);
+};
+
+// Subscribe to notifications for a user
+export const subscribeToNotifications = (
+  userId: string,
+  callback: (notifications: Notification[]) => void
+): () => void => {
+  const notificationsRef = ref(realtimeDb, 'notifications');
+  const notificationsQuery = query(
+    notificationsRef,
+    orderByChild('userId'),
+    equalTo(userId)
+  );
+  
+  const unsubscribe = onValue(notificationsQuery, (snapshot) => {
+    if (!snapshot.exists()) {
+      callback([]);
+      return;
+    }
+    
+    const notifications: Notification[] = [];
+    snapshot.forEach((childSnapshot) => {
+      const notification = childSnapshot.val() as Notification;
+      notifications.push(notification);
+    });
+    
+    // Sort by creation date, newest first
+    callback(notifications.sort((a, b) => {
+      const dateA = new Date(a.createdAt);
+      const dateB = new Date(b.createdAt);
+      return dateB.getTime() - dateA.getTime();
+    }));
+  });
+  
+  return unsubscribe;
+};
+
+// Function to generate demo notifications for testing
+export const generateDemoNotifications = async (userId: string): Promise<void> => {
+  const notificationTypes = ['feedback', 'goal', 'review', 'request', 'system'];
+  const notificationTitles = {
+    feedback: ['New Feedback', 'Feedback Response', 'Team Feedback'],
+    goal: ['Goal Update', 'Goal Assigned', 'Goal Completed'],
+    review: ['Review Submitted', 'Performance Review', 'Quarterly Review'],
+    request: ['Feedback Request', 'Document Request', 'Meeting Request'],
+    system: ['Account Update', 'System Maintenance', 'Profile Update']
+  };
+  const notificationMessages = {
+    feedback: [
+      'Your team leader has provided feedback on your recent project.',
+      'Your recent work has been recognized by management.',
+      'A colleague has shared feedback on your presentation.'
+    ],
+    goal: [
+      'A new goal has been assigned to you for this quarter.',
+      'Your goal "Improve Customer Service" is due next week.',
+      'You have completed 3 of your 5 assigned goals.'
+    ],
+    review: [
+      'Your annual performance review is now available.',
+      'Your manager has submitted a new quarterly review.',
+      'Your 360° feedback is ready for your review.'
+    ],
+    request: [
+      'A team member has requested your feedback on their project.',
+      'Your manager has requested a project status update.',
+      'The HR department requests your updated information.'
+    ],
+    system: [
+      'Welcome to the new employee feedback system.',
+      'Your account has been successfully updated.',
+      'System maintenance scheduled for this weekend.'
+    ]
+  };
+  
+  // Create 5 demo notifications with different types and read status
+  const notificationPromises = [];
+  
+  for (let i = 0; i < 5; i++) {
+    const type = notificationTypes[i % notificationTypes.length] as 'feedback' | 'goal' | 'review' | 'request' | 'system';
+    const titleIndex = Math.floor(Math.random() * notificationTitles[type].length);
+    const messageIndex = Math.floor(Math.random() * notificationMessages[type].length);
+    
+    const timeOffset = Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000); // Random time within last week
+    
+    notificationPromises.push(
+      createNotification({
+        userId: userId,
+        title: notificationTitles[type][titleIndex],
+        message: notificationMessages[type][messageIndex],
+        type: type,
+        read: i > 2, // First 3 unread, last 2 read
+        createdAt: new Date(Date.now() - timeOffset)
+      })
+    );
+  }
+  
+  await Promise.all(notificationPromises);
 };

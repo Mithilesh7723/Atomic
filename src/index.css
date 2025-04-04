@@ -122,42 +122,53 @@ body {
 
 @keyframes cosmic-wave {
   0% {
-    transform: translateY(0);
+    transform: translate(0, 0) scale(1);
     opacity: 0.2;
   }
   50% {
-    transform: translateY(-15px);
-    opacity: 0.4;
+    transform: translate(-20px, 20px) scale(1.1);
+    opacity: 0.3;
   }
   100% {
-    transform: translateY(0);
+    transform: translate(0, 0) scale(1);
     opacity: 0.2;
   }
 }
 
 @keyframes nebula-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+  0% {
+    transform: scale(1);
+    filter: blur(30px);
+    opacity: 0.4;
   }
   50% {
-    box-shadow: 0 0 0 15px rgba(99, 102, 241, 0);
+    transform: scale(1.2);
+    filter: blur(40px);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1);
+    filter: blur(30px);
+    opacity: 0.4;
   }
 }
 
 @keyframes comet {
   0% {
-    transform: translateX(100vw) translateY(-100px) rotate(35deg);
+    transform: translate(-100px, -100px) rotate(45deg);
     opacity: 0;
+    width: 0;
   }
   10% {
-    opacity: 1;
+    opacity: 0.7;
+    width: 100px;
   }
   20% {
-    transform: translateX(-100vw) translateY(100px) rotate(35deg);
+    transform: translate(120vw, 120vh) rotate(45deg);
     opacity: 0;
   }
   100% {
-    transform: translateX(-100vw) translateY(100px) rotate(35deg);
+    transform: translate(120vw, 120vh) rotate(45deg);
     opacity: 0;
   }
 }
@@ -168,13 +179,90 @@ body {
     opacity: 0.2;
   }
   50% {
-    background-position: 100% 25%;
+    background-position: 100% 50%;
     opacity: 0.3;
   }
   100% {
     background-position: 0% 50%;
     opacity: 0.2;
   }
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-slow {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.8);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.5);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.7);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.5) rgba(255, 255, 255, 0.05);
 }
 
 @layer components {
@@ -265,10 +353,13 @@ body {
     animation: rotate 35s linear infinite reverse;
   }
   .animate-fade-in {
-    animation: fade-in 0.5s ease-out;
+    animation: fadeIn 0.2s ease-out forwards;
   }
   .animate-scale-in {
-    animation: scale-in 0.3s ease-out;
+    animation: scaleIn 0.2s ease-out forwards;
+  }
+  .animate-pulse {
+    animation: pulse 2s infinite;
   }
   .animate-cosmic-wave {
     animation: cosmic-wave 15s ease-in-out infinite;
@@ -294,4 +385,378 @@ body {
   .text-shadow-glow {
     text-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
   }
+  
+  /* Custom scrollbar specific class */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    margin: 2px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.5);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(129, 140, 248, 0.7);
+  }
+
+  .animation-delay-1000 {
+    animation-delay: 1s;
+  }
+  .animation-delay-1500 {
+    animation-delay: 1.5s;
+  }
+  .animation-delay-2500 {
+    animation-delay: 2.5s;
+  }
+  .animation-delay-3000 {
+    animation-delay: 3s;
+  }
+  .animation-delay-3500 {
+    animation-delay: 3.5s;
+  }
+  .animation-delay-5000 {
+    animation-delay: 5s;
+  }
+  .animation-delay-7000 {
+    animation-delay: 7s;
+  }
+  .animation-delay-9000 {
+    animation-delay: 9s;
+  }
+  .animate-twinkle {
+    animation: twinkle 4s ease-in-out infinite;
+  }
+  .animate-twinkle-slow {
+    animation: twinkle 7s ease-in-out infinite;
+  }
+  .animate-float-particle {
+    animation: float-particle 20s linear infinite;
+  }
+  .animate-glow {
+    animation: glow 5s ease-in-out infinite;
+  }
+  .animate-light-ray {
+    animation: light-ray 15s linear infinite;
+  }
+  .animate-galaxy-spin {
+    animation: galaxy-spin 60s linear infinite;
+  }
+}
+
+/* Custom animations for cosmic effects */
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes float-particle {
+  0% {
+    transform: translateY(0) translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-15px) translateX(10px) rotate(90deg);
+  }
+  50% {
+    transform: translateY(-5px) translateX(-10px) rotate(180deg);
+  }
+  75% {
+    transform: translateY(15px) translateX(-5px) rotate(270deg);
+  }
+  100% {
+    transform: translateY(0) translateX(0) rotate(360deg);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 20px 5px rgba(255, 255, 255, 0.2);
+  }
+}
+
+@keyframes light-ray {
+  0% {
+    opacity: 0.05;
+    transform: rotate(0deg) translateX(0) scale(1);
+  }
+  50% {
+    opacity: 0.15;
+    transform: rotate(180deg) translateX(20px) scale(1.1);
+  }
+  100% {
+    opacity: 0.05;
+    transform: rotate(360deg) translateX(0) scale(1);
+  }
+}
+
+@keyframes galaxy-spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.05);
+    filter: hue-rotate(40deg);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+    filter: hue-rotate(0deg);
+  }
+}
+
+/* Cosmic animations */
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.95); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.95); }
+}
+
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes cosmic-wave {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.5;
+  }
+  33% {
+    transform: translate(-10px, 10px) scale(1.05);
+    opacity: 0.7;
+  }
+  66% {
+    transform: translate(10px, -10px) scale(0.95);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.5;
+  }
+}
+
+@keyframes nebula-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+@keyframes aurora {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes comet {
+  0% {
+    transform: translateX(0) translateY(0) rotate(45deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.3;
+  }
+  20% {
+    transform: translateX(var(--random-x, 100px)) translateY(var(--random-y, 100px)) rotate(45deg);
+    opacity: 0.6;
+  }
+  40% {
+    opacity: 0.3;
+  }
+  70% {
+    transform: translateX(var(--random-x2, 300px)) translateY(var(--random-y2, 300px)) rotate(45deg);
+    opacity: 0.1;
+  }
+  100% {
+    transform: translateX(var(--random-x3, 400px)) translateY(var(--random-y3, 400px)) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+/* New animations for enhanced cosmic effects */
+@keyframes twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.8); }
+}
+
+@keyframes twinkle-slow {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  33% { opacity: 0.3; transform: scale(0.85); }
+  66% { opacity: 0.7; transform: scale(0.9); }
+}
+
+@keyframes float-particle {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0.3;
+  }
+  25% {
+    transform: translate(15px, -15px);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-5px, -25px);
+    opacity: 0.2;
+  }
+  75% {
+    transform: translate(-20px, -10px);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 0.3;
+  }
+}
+
+@keyframes glow {
+  0%, 100% { 
+    box-shadow: 0 0 10px 2px rgba(138, 43, 226, 0.2);
+    opacity: 0.5;
+  }
+  50% { 
+    box-shadow: 0 0 20px 5px rgba(138, 43, 226, 0.4);
+    opacity: 0.7;
+  }
+}
+
+@keyframes light-ray {
+  0% {
+    opacity: 0.05;
+    transform: translateY(-100px) scaleX(0.8);
+  }
+  50% {
+    opacity: 0.2;
+    transform: translateY(0) scaleX(1.2);
+  }
+  100% {
+    opacity: 0.05;
+    transform: translateY(100px) scaleX(0.8);
+  }
+}
+
+@keyframes galaxy-spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+/* Utility classes for animation delays */
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-300 {
+  animation-delay: 300ms;
+}
+
+.animation-delay-500 {
+  animation-delay: 500ms;
+}
+
+.animation-delay-700 {
+  animation-delay: 700ms;
+}
+
+.animation-delay-1000 {
+  animation-delay: 1000ms;
+}
+
+.animation-delay-1500 {
+  animation-delay: 1500ms;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2000ms;
+}
+
+.animation-delay-3000 {
+  animation-delay: 3000ms;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4000ms;
+}
+
+.animation-delay-5000 {
+  animation-delay: 5000ms;
+}
+
+.animation-delay-6000 {
+  animation-delay: 6000ms;
+}
+
+.animation-delay-7000 {
+  animation-delay: 7000ms;
+}
+
+.animation-delay-8000 {
+  animation-delay: 8000ms;
+}
+
+.animation-delay-9000 {
+  animation-delay: 9000ms;
+}
+
+.bg-size-200 {
+  background-size: 200% 200%;
 }
