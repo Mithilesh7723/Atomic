@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, CheckSquare, AlertCircle, MessageSquare, Target, BarChart2, Settings, Check } from 'lucide-react';
-import { Notification } from '../services/realtimeDbService';
+import { Notification } from '../types/models';
 import ReactDOM from 'react-dom';
 
 interface NotificationBellProps {
@@ -14,6 +14,15 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
   const bellRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Sort notifications with newest first
+  const sortedNotifications = React.useMemo(() => {
+    return [...notifications].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA; // Descending order (newest first)
+    });
+  }, [notifications]);
   
   const unreadCount = notifications.filter(n => !n.read).length;
   
@@ -68,11 +77,20 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
   // Format notification date
   const formatDate = (date: any) => {
     try {
+      if (!date) return 'Recently';
+      
       const now = new Date();
-      const notificationDate = new Date(date);
+      const notificationDate = typeof date === 'string' ? new Date(date) : date;
+      
+      // Check if date is valid
+      if (isNaN(notificationDate.getTime())) {
+        return 'Recently';
+      }
+      
       const diffInSeconds = Math.floor((now.getTime() - notificationDate.getTime()) / 1000);
       
-      if (diffInSeconds < 60) return 'just now';
+      if (diffInSeconds < 5) return 'just now';
+      if (diffInSeconds < 60) return `${diffInSeconds} seconds ago`;
       if (diffInSeconds < 3600) {
         const mins = Math.floor(diffInSeconds / 60);
         return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
@@ -86,24 +104,31 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
         return `${days} ${days === 1 ? 'day' : 'days'} ago`;
       }
       
-      return notificationDate.toLocaleDateString();
+      // Format date more clearly for older dates
+      return notificationDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: notificationDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
     } catch (error) {
+      console.error("Error formatting date:", error);
       return 'Recently';
     }
   };
   
-  // Create the notification dropdown portal
+  // Notification dropdown component
   const NotificationDropdown = () => {
-    // If the portal container doesn't exist yet, create it
-    let portalContainer = document.getElementById('notification-portal');
+    // Create portal container if it doesn't exist
+    const portalId = 'notification-portal';
+    let portalContainer = document.getElementById(portalId);
+    
     if (!portalContainer) {
       portalContainer = document.createElement('div');
-      portalContainer.id = 'notification-portal';
+      portalContainer.id = portalId;
       document.body.appendChild(portalContainer);
     }
     
-    // Return the portal content
-    return ReactDOM.createPortal(
+    const content = (
       <div 
         ref={dropdownRef}
         className="w-80 glass-card p-1 rounded-xl animate-fade-in"
@@ -111,18 +136,19 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
           position: 'fixed',
           top: `${dropdownPosition.top}px`,
           right: `${dropdownPosition.right}px`,
-          zIndex: 999999
+          zIndex: 999999,
+          backgroundColor: 'rgba(30, 27, 75, 0.85)',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
         }}
       >
-        <div className="p-4 rounded-xl">
+        <div className="p-3">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-white">Notifications</h3>
             {unreadCount > 0 && (
               <button
-                onClick={() => {
-                  onMarkAllAsRead();
-                }}
-                className="text-xs glass-button-ghost px-2 py-1 rounded-md text-indigo-300 hover:bg-indigo-800/20"
+                onClick={() => onMarkAllAsRead()}
+                className="text-xs glass-button-ghost px-2 py-1 rounded-md text-indigo-300 hover:bg-indigo-800/40"
               >
                 Mark all as read
               </button>
@@ -130,7 +156,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
           </div>
           
           <div className="max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
-            {notifications.length === 0 ? (
+            {sortedNotifications.length === 0 ? (
               <div className="text-center py-6 text-white/60">
                 <div className="flex justify-center mb-3">
                   <CheckSquare className="w-10 h-10 text-indigo-400/50" />
@@ -139,10 +165,14 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
               </div>
             ) : (
               <div className="space-y-2">
-                {notifications.map((notification) => (
+                {sortedNotifications.map((notification) => (
                   <div 
                     key={notification.id} 
-                    className={`glass p-3 rounded-lg relative transition-all duration-200 ${notification.read ? 'opacity-75' : 'bg-indigo-500/10'}`}
+                    className={`p-3 rounded-lg relative transition-all duration-200 ${
+                      notification.read 
+                        ? 'bg-indigo-900/40 opacity-75' 
+                        : 'bg-indigo-800/60'
+                    }`}
                   >
                     <div className="flex">
                       <div className="mt-1 mr-3">
@@ -156,7 +186,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
                               <span className="ml-2 bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded text-xs">New</span>
                             )}
                           </h4>
-                          <span className="text-white/50 text-xs">{formatDate(notification.createdAt)}</span>
+                          <span className="text-white/60 text-xs">{formatDate(notification.createdAt)}</span>
                         </div>
                         <p className="text-white/80 text-sm mt-1">{notification.message}</p>
                       </div>
@@ -168,7 +198,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
                           e.stopPropagation();
                           onMarkAsRead(notification.id);
                         }}
-                        className="absolute bottom-2 right-2 text-indigo-300 hover:text-indigo-200 p-1 rounded-full hover:bg-indigo-500/20"
+                        className="absolute bottom-2 right-2 text-indigo-300 hover:text-indigo-200 p-1 rounded-full hover:bg-indigo-500/30"
                         title="Mark as read"
                       >
                         <Check className="w-4 h-4" />
@@ -180,9 +210,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ notifications, onMa
             )}
           </div>
         </div>
-      </div>,
-      portalContainer
+      </div>
     );
+    
+    return ReactDOM.createPortal(content, portalContainer);
   };
   
   return (

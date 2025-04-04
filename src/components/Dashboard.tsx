@@ -20,7 +20,9 @@ import {
   Calendar,
   Save,
   CheckCircle,
-  Send
+  Send,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { 
   getEmployeeByUserId, 
@@ -33,13 +35,23 @@ import {
   createFeedback,
   subscribeToNotifications,
   markNotificationAsRead,
-  markAllNotificationsAsRead
+  markAllNotificationsAsRead,
+  deleteFeedback,
+  updateGoal
 } from '../services/realtimeDbService';
 import { Employee, Feedback, Goal, Metric, PerformanceMetric, Notification } from '../types/models';
 import FeedbackSection from './FeedbackSection';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 import Leaderboard from './Leaderboard';
 import NotificationBell from './NotificationBell';
+import GoalsTracker from './GoalsTracker';
+
+// Add this near the top of the file, before the component declarations
+declare global {
+  interface Window {
+    notificationTimeout: ReturnType<typeof setTimeout> | undefined;
+  }
+}
 
 // Component to display a metric with a progress bar
 const MetricsCard: React.FC<{ metric: Metric }> = ({ metric }) => {
@@ -260,6 +272,11 @@ const RequestFeedbackModal = ({ employee, onClose, onSubmit }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
 
+  // Clear notification function
+  const clearNotification = () => {
+    setNotification({ show: false, message: '', type: '' });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -273,10 +290,16 @@ const RequestFeedbackModal = ({ employee, onClose, onSubmit }) => {
         type: 'success'
       });
       
+      // Clear existing timeout
+      if (window.notificationTimeout) {
+        clearTimeout(window.notificationTimeout);
+      }
+      
       // Close after a short delay
-      setTimeout(() => {
+      window.notificationTimeout = setTimeout(() => {
+        clearNotification();
         onClose();
-      }, 1500);
+      }, 2000);
       
     } catch (error) {
       console.error('Error requesting feedback:', error);
@@ -285,6 +308,12 @@ const RequestFeedbackModal = ({ employee, onClose, onSubmit }) => {
         message: 'Failed to send feedback request',
         type: 'error'
       });
+      
+      // Clear error notification after 5 seconds
+      if (window.notificationTimeout) {
+        clearTimeout(window.notificationTimeout);
+      }
+      window.notificationTimeout = setTimeout(clearNotification, 5000);
     } finally {
       setIsLoading(false);
     }
@@ -404,6 +433,7 @@ const Dashboard = () => {
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [showRequestFeedback, setShowRequestFeedback] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -542,135 +572,48 @@ const Dashboard = () => {
     };
   }, [user]);
 
-  // Handle profile photo upload
+  // Update user profile photo
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!employee || !e.target.files || e.target.files.length === 0) return;
+    if (!e.target.files || !e.target.files[0] || !employee || !user) return;
     
     const file = e.target.files[0];
-    setUploadingPhoto(true);
-    console.log("Starting photo upload...");
+    
+    // Basic validation
+    if (!file.type.includes('image')) {
+      handleSetNotification('error', 'Please select an image file');
+      return;
+    }
     
     try {
-      // Skip Firebase Storage due to CORS issues and use base64 encoding directly
-      console.log("Using direct base64 encoding for image upload");
+      setUploadingPhoto(true);
       
-      // Use canvas to compress the image before converting to base64
-      const compressImage = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            if (!event.target?.result) {
-              reject(new Error("Failed to read file"));
-              return;
-            }
-            
-            const img = new Image();
-            img.onload = () => {
-              // Create canvas for resizing
-              const canvas = document.createElement('canvas');
-              
-              // Set maximum dimensions
-              let width = img.width;
-              let height = img.height;
-              const MAX_WIDTH = 800;
-              const MAX_HEIGHT = 800;
-              
-              // Resize if needed
-              if (width > height) {
-                if (width > MAX_WIDTH) {
-                  height *= MAX_WIDTH / width;
-                  width = MAX_WIDTH;
-                }
-              } else {
-                if (height > MAX_HEIGHT) {
-                  width *= MAX_HEIGHT / height;
-                  height = MAX_HEIGHT;
-                }
-              }
-              
-              canvas.width = width;
-              canvas.height = height;
-              
-              // Draw and compress
-              const ctx = canvas.getContext('2d');
-              if (!ctx) {
-                reject(new Error("Could not get canvas context"));
-                return;
-              }
-              
-              ctx.drawImage(img, 0, 0, width, height);
-              
-              // Convert to base64 with reduced quality
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-              resolve(dataUrl);
-            };
-            
-            img.onerror = () => {
-              reject(new Error("Failed to load image"));
-            };
-            
-            img.src = event.target.result as string;
-          };
-          
-          reader.onerror = () => {
-            reject(reader.error || new Error("Error reading file"));
-          };
-          
-          reader.readAsDataURL(file);
-        });
-      };
+      // Create a storage reference
+      const storage = getStorage();
+      const fileRef = storageRef(storage, `profile_photos/${user.uid}`);
       
-      try {
-        // Compress and convert image to base64
-        console.log("Compressing image...");
-        const base64Image = await compressImage(file);
-        console.log("Compression complete. Base64 length:", base64Image.length);
-        
-        // Update employee with compressed base64 image
-        console.log("Updating employee record with compressed image...");
-        await updateEmployee(employee.id, { photoURL: base64Image });
-        
-        // Update local state
-        setEmployee(prev => {
-          console.log("Updating local state with compressed image");
-          return prev ? { ...prev, photoURL: base64Image } : null;
-        });
-        
-        // Show success notification
-        setNotification({
-          show: true,
-          message: 'Profile photo updated successfully!',
-          type: 'success'
-        });
-        
-        // Hide notification after 3 seconds
-        setTimeout(() => {
-          setNotification({ show: false, message: '', type: '' });
-        }, 3000);
-        
-      } catch (error) {
-        console.error("Failed during image compression:", error);
-        setNotification({
-          show: true,
-          message: 'Failed to process image. Please try a smaller image.',
-          type: 'error'
-        });
-      } finally {
-        setUploadingPhoto(false);
-      }
-    } catch (error) {
-      console.error('Error in photo upload process:', error);
-      if (error instanceof Error) {
-        console.error(`Error name: ${error.name}, message: ${error.message}`);
-        console.error(`Error stack: ${error.stack}`);
-      }
+      // Upload the file
+      await uploadBytes(fileRef, file);
       
-      setNotification({
-        show: true,
-        message: `Failed to upload photo: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        type: 'error'
+      // Get the download URL
+      const downloadURL = await getDownloadURL(fileRef);
+      
+      // Update the user's photoURL
+      await updateProfile(user, { photoURL: downloadURL });
+      
+      // Update the employee record
+      await updateEmployee(employee.id, { photoURL: downloadURL });
+      
+      // Update local state
+      setEmployee(prev => {
+        console.log("Updating local state with new image");
+        return prev ? { ...prev, photoURL: downloadURL } : null;
       });
       
+      handleSetNotification('success', 'Profile photo updated!');
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      handleSetNotification('error', 'Failed to upload photo');
+    } finally {
       setUploadingPhoto(false);
     }
   };
@@ -731,22 +674,14 @@ const Dashboard = () => {
         status: 'pending' // Status for tracking requests
       });
       
-      // Show success notification
-      setNotification({
-        show: true,
-        message: 'Your feedback request has been submitted!',
-        type: 'success'
-      });
+      // Show success notification using the new function
+      handleSetNotification('success', 'Your feedback request has been submitted!');
       
-      // Close modal
+      // Close modal immediately after success
       setShowRequestFeedback(false);
     } catch (error) {
       console.error('Error submitting feedback request:', error);
-      setNotification({
-        show: true,
-        message: 'Failed to submit feedback request. Please try again.',
-        type: 'error'
-      });
+      handleSetNotification('error', 'Failed to submit feedback request. Please try again.');
     }
   };
 
@@ -771,12 +706,221 @@ const Dashboard = () => {
     }
   };
 
+  const handleSetNotification = (type, message) => {
+    setNotification({
+      show: true,
+      message,
+      type
+    });
+    
+    // Clear existing timeout
+    if (window.notificationTimeout) {
+      clearTimeout(window.notificationTimeout);
+    }
+    
+    // Auto-hide notification after 5 seconds
+    window.notificationTimeout = setTimeout(() => {
+      setNotification(prev => ({...prev, show: false}));
+    }, 5000);
+  };
+
+  useEffect(() => {
+    // Save profile updates
+    if (saveSuccess) {
+      handleSetNotification('success', 'Profile updated successfully!');
+      setSaveSuccess(false);
+    }
+  }, [saveSuccess]);
+
+  // Handler for clearing feedback
+  const handleClearFeedback = async (feedbackId: string) => {
+    try {
+      await deleteFeedback(feedbackId);
+      
+      // Optimistically update the UI
+      setFeedbacks(prev => prev.filter(feedback => feedback.id !== feedbackId));
+      
+      // Show success notification
+      handleSetNotification('success', 'Feedback removed successfully');
+    } catch (error) {
+      console.error('Error removing feedback:', error);
+      handleSetNotification('error', 'Failed to remove feedback');
+    }
+  };
+
+  // Handler for marking a goal as complete
+  const handleMarkGoalAsComplete = async (goalId: string) => {
+    try {
+      await updateGoal(goalId, { 
+        status: 'completed',
+        updatedAt: new Date()
+      });
+      
+      // Success notification 
+      handleSetNotification('success', 'Goal marked as complete!');
+      
+      // We don't need to update the state here as the subscription should handle it
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Error updating goal:', error);
+      handleSetNotification('error', 'Failed to update goal');
+      return Promise.reject(error);
+    }
+  };
+
+  // Add handler for clearing all feedback
+  const handleClearAllFeedback = async () => {
+    try {
+      // Get all feedback IDs
+      const feedbackIds = feedbacks.map(feedback => feedback.id);
+      
+      // Delete each feedback one by one
+      const deletePromises = feedbackIds.map(id => deleteFeedback(id));
+      await Promise.all(deletePromises);
+      
+      // Update local state
+      setFeedbacks([]);
+      
+      // Show success notification
+      handleSetNotification('success', 'All feedback cleared successfully');
+    } catch (error) {
+      console.error('Error clearing all feedback:', error);
+      handleSetNotification('error', 'Failed to clear all feedback');
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 flex items-center justify-center">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-          <p className="text-white/70">Loading your dashboard...</p>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900">
+        {/* Enhanced cosmic background with minimal elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-20 -left-20 w-96 h-96 bg-blue-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
+          <div className="absolute top-1/3 -right-20 w-96 h-96 bg-purple-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
+        </div>
+        
+        {/* Skeleton loading UI */}
+        <div className="relative z-10">
+          {/* Header skeleton */}
+          <nav className="glass border-b border-white/10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16 items-center">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 rounded-full bg-white/10 animate-pulse"></div>
+                  <div className="ml-3 h-5 w-40 bg-white/10 rounded animate-pulse"></div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="h-8 w-8 bg-white/10 rounded-full animate-pulse"></div>
+                  <div className="h-8 w-20 bg-white/10 rounded-lg animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+          </nav>
+
+          <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+            {/* Profile card skeleton */}
+            <div className="glass-card p-6 mb-8">
+              <div className="h-6 w-32 bg-white/10 rounded animate-pulse mb-6"></div>
+              
+              <div className="flex flex-col md:flex-row items-start gap-8">
+                <div className="flex flex-col items-center">
+                  <div className="w-32 h-32 rounded-full bg-white/10 animate-pulse"></div>
+                  <div className="h-5 w-24 bg-white/10 rounded animate-pulse mt-4 mb-1"></div>
+                  <div className="h-4 w-20 bg-white/10 rounded animate-pulse mb-1"></div>
+                  <div className="h-3 w-16 bg-white/10 rounded animate-pulse"></div>
+                </div>
+                
+                <div className="flex-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="glass p-4 rounded-xl">
+                        <div className="flex items-center mb-2">
+                          <div className="w-4 h-4 rounded-full bg-white/10 animate-pulse mr-2"></div>
+                          <div className="h-4 w-20 bg-white/10 rounded animate-pulse"></div>
+                        </div>
+                        <div className="h-5 w-full bg-white/10 rounded animate-pulse ml-6"></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Performance overview skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div className="md:col-span-2 glass-card p-6">
+                <div className="h-6 w-48 bg-white/10 rounded animate-pulse mb-4"></div>
+                <div className="glass p-4 rounded-xl">
+                  <div className="mb-3">
+                    <div className="flex justify-between mb-1">
+                      <div className="h-4 w-32 bg-white/10 rounded animate-pulse"></div>
+                      <div className="h-4 w-10 bg-white/10 rounded animate-pulse"></div>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-2">
+                      <div className="h-full rounded-full bg-indigo-500/50 animate-pulse" style={{ width: '65%' }}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="glass-card p-4">
+                    <div className="flex items-center mb-2">
+                      <div className="w-4 h-4 rounded-full bg-white/10 animate-pulse mr-2"></div>
+                      <div className="h-4 w-24 bg-white/10 rounded animate-pulse"></div>
+                    </div>
+                    <div className="mb-1.5 flex justify-between">
+                      <div className="h-3 w-12 bg-white/10 rounded animate-pulse"></div>
+                      <div className="h-3 w-8 bg-white/10 rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-indigo-500/50 animate-pulse" style={{ width: `${65 + i * 10}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Goals and Feedback skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {[...Array(2)].map((_, i) => (
+                  <div key={i} className="glass-card p-6">
+                    <div className="h-6 w-40 bg-white/10 rounded animate-pulse mb-4"></div>
+                    <div className="space-y-4">
+                      {[...Array(3)].map((_, j) => (
+                        <div key={j} className="glass p-4 rounded-xl">
+                          <div className="h-5 w-full bg-white/10 rounded animate-pulse mb-1"></div>
+                          <div className="h-4 w-5/6 bg-white/10 rounded animate-pulse mb-3"></div>
+                          <div className="w-full bg-white/10 rounded-full h-1.5 animate-pulse">
+                            <div className="h-full rounded-full bg-indigo-500/50" style={{ width: `${30 + j * 30}%` }}></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="md:col-span-1 glass-card p-6">
+                <div className="h-6 w-32 bg-white/10 rounded animate-pulse mb-4"></div>
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex items-center py-2 border-b border-white/10">
+                      <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse mr-3"></div>
+                      <div>
+                        <div className="h-4 w-24 bg-white/10 rounded animate-pulse mb-1"></div>
+                        <div className="h-3 w-16 bg-white/10 rounded animate-pulse"></div>
+                      </div>
+                      <div className="ml-auto">
+                        <div className="h-5 w-10 bg-white/10 rounded animate-pulse"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </main>
         </div>
       </div>
     );
@@ -887,13 +1031,23 @@ const Dashboard = () => {
 
       {/* Notification */}
       {notification.show && (
-        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 ${notification.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'} text-white px-6 py-3 rounded-lg shadow-lg flex items-center animate-fade-in`}>
-          {notification.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 mr-2" />
-          ) : (
-            <AlertCircle className="w-5 h-5 mr-2" />
-          )}
-          {notification.message}
+        <div className={`fixed z-50 top-5 right-5 p-4 rounded-xl shadow-lg max-w-md transform transition-all animate-fade-in ${
+          notification.type === 'success' ? 'bg-green-900/90' : 
+          notification.type === 'error' ? 'bg-red-900/90' : 
+          'bg-blue-900/90'
+        }`}>
+          <div className="flex items-center">
+            {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-green-400 mr-2" />}
+            {notification.type === 'error' && <AlertTriangle className="w-5 h-5 text-red-400 mr-2" />}
+            {notification.type === 'info' && <Info className="w-5 h-5 text-blue-400 mr-2" />}
+            <p className="text-white">{notification.message}</p>
+            <button 
+              onClick={() => setNotification(prev => ({...prev, show: false}))}
+              className="ml-4 text-white/70 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1101,44 +1255,20 @@ const Dashboard = () => {
                   <p className="text-white/70">No active goals found. Your manager will assign goals soon.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {goals.map((goal) => (
-                    <div key={goal.id} className="glass p-4 rounded-xl hover:bg-white/10 transition-all duration-300">
-                      <h3 className="text-white font-medium mb-1">{goal.title}</h3>
-                      <p className="text-white/70 text-sm mb-3">{goal.description}</p>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-white/50">Progress</span>
-                        <span 
-                          className={`px-2 py-0.5 rounded-full text-xs ${
-                            goal.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300' :
-                            goal.status === 'in-progress' ? 'bg-blue-500/20 text-blue-300' :
-                            'bg-amber-500/20 text-amber-300'
-                          }`}
-                        >
-                          {goal.status.charAt(0).toUpperCase() + goal.status.slice(1)}
-                        </span>
-                      </div>
-                      <div className="w-full bg-white/10 rounded-full h-1.5">
-                        <div 
-                          className={`h-full rounded-full ${
-                            goal.status === 'completed' ? 'bg-emerald-500' :
-                            goal.status === 'in-progress' ? 'bg-blue-500' :
-                            'bg-amber-500'
-                          }`}
-                          style={{ 
-                            width: `${goal.status === 'completed' ? 100 : goal.status === 'in-progress' ? 50 : 10}%` 
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <GoalsTracker 
+                  goals={goals} 
+                  onMarkAsComplete={handleMarkGoalAsComplete}
+                />
               )}
             </div>
             
-            <FeedbackSection feedbacks={feedbacks} />
-          </div>
-          
+            <FeedbackSection 
+              feedbacks={feedbacks} 
+              onClearFeedback={handleClearFeedback}
+              onClearAllFeedback={handleClearAllFeedback}
+          />
+        </div>
+
           <div className="md:col-span-1">
             {console.log("Rendering leaderboard with employees:", allEmployees)}
             <Leaderboard 

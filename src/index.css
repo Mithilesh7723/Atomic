@@ -163,11 +163,7 @@ body {
     opacity: 0.7;
     width: 100px;
   }
-  20% {
-    transform: translate(120vw, 120vh) rotate(45deg);
-    opacity: 0;
-  }
-  100% {
+  20%, 100% {
     transform: translate(120vw, 120vh) rotate(45deg);
     opacity: 0;
   }
@@ -600,25 +596,14 @@ body {
 
 @keyframes comet {
   0% {
-    transform: translateX(0) translateY(0) rotate(45deg);
+    transform: translate(-10%, -10%) rotate(45deg);
     opacity: 0;
   }
-  10% {
-    opacity: 0.3;
-  }
-  20% {
-    transform: translateX(var(--random-x, 100px)) translateY(var(--random-y, 100px)) rotate(45deg);
-    opacity: 0.6;
-  }
-  40% {
-    opacity: 0.3;
-  }
-  70% {
-    transform: translateX(var(--random-x2, 300px)) translateY(var(--random-y2, 300px)) rotate(45deg);
-    opacity: 0.1;
+  5% {
+    opacity: 0.7;
   }
   100% {
-    transform: translateX(var(--random-x3, 400px)) translateY(var(--random-y3, 400px)) rotate(45deg);
+    transform: translate(110%, 110%) rotate(45deg);
     opacity: 0;
   }
 }
@@ -759,4 +744,104 @@ body {
 
 .bg-size-200 {
   background-size: 200% 200%;
+}
+
+/* Confetti animation */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-100px) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(200px) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-out {
+  0% {
+    opacity: 0.5;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2);
+  }
+}
+
+/* Optimistic UI feedback animations */
+@keyframes scale-bounce {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Animation classes */
+.animate-confetti {
+  animation: confetti-fall 2s forwards;
+}
+
+.animate-pulse-out {
+  animation: pulse-out 1s forwards;
+}
+
+.animate-scale-bounce {
+  animation: scale-bounce 0.5s ease-in-out;
+}
+
+.animation-delay-250 {
+  animation-delay: 250ms;
+}
+
+.animation-delay-500 {
+  animation-delay: 500ms;
+}
+
+.animation-delay-750 {
+  animation-delay: 750ms;
+}
+
+/* Improved hover and interaction states */
+.glass-button {
+  @apply bg-white/10 backdrop-blur-md text-white transition-all duration-300;
+}
+
+.glass-button:hover {
+  @apply bg-white/15 shadow-lg shadow-indigo-500/10 transform scale-[1.02];
+}
+
+.glass-button:active {
+  @apply transform scale-[0.98] bg-white/20;
+}
+
+/* Glass card enhancements */
+.glass-card {
+  @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-xl transition-all duration-300;
+}
+
+.glass-card:hover {
+  @apply border-white/15 shadow-lg shadow-indigo-500/5;
+}
+
+/* Make animations more subtle on reduced motion preference */
+@media (prefers-reduced-motion) {
+  .animate-confetti,
+  .animate-pulse-out,
+  .animate-scale-bounce {
+    animation: none;
+  }
+  
+  .glass-button:hover,
+  .glass-button:active {
+    transform: none;
+  }
 }

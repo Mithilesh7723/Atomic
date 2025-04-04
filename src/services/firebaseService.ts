@@ -22,7 +22,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { Employee, Goal, Feedback, Department, PerformanceMetric, User } from '../types/models';
-import { createUser } from './realtimeDbService';
+import { createUser, getUserById } from './realtimeDbService';
 
 // User Management
 export const registerUser = async (
@@ -32,28 +32,70 @@ export const registerUser = async (
   displayName: string
 ) => {
   try {
-    // Create user in Firebase Auth
+    console.log(`Starting user registration process for ${email} with role ${role}`);
+    
+    // Step 1: Create user in Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
+    console.log(`Firebase Auth user created successfully: ${user.uid}`);
 
-    // Update user profile with display name
+    // Step 2: Update user profile with display name
     await updateProfile(user, { displayName });
+    console.log(`User profile updated with displayName: ${displayName}`);
 
-    // Create user profile in Realtime Database
-    await createUser(user.uid, {
+    // Step 3: Create complete user profile in Realtime Database
+    const userData = {
       uid: user.uid,
       email: user.email,
       displayName,
       role,
-      photoURL: user.photoURL,
-    });
+      photoURL: user.photoURL || null,
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      active: true
+    };
+    
+    console.log(`Saving user data to Realtime Database:`, userData);
+    await createUser(user.uid, userData);
+    console.log(`User data successfully saved to Realtime Database`);
 
+    // Verify user was created in Realtime Database
+    const verifyUser = await getUserById(user.uid);
+    if (!verifyUser) {
+      console.error(`User verification failed - user ${user.uid} not found in Realtime Database after creation`);
+      throw new Error('User creation in database failed - please try again');
+    }
+    
+    console.log(`User registration complete for ${email} (${user.uid})`);
     return user;
   } catch (error: any) {
-    console.error("Error in registerUser:", error);
+    console.error(`Error in registerUser for ${email}:`, error);
     
-    // Re-throw the error to be handled by the caller
-    throw error;
+    // Enhanced error handling
+    let errorMessage = 'User registration failed';
+    if (error.code) {
+      switch(error.code) {
+        case 'auth/email-already-in-use':
+          errorMessage = 'This email is already registered';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Invalid email format';
+          break;
+        case 'auth/weak-password':
+          errorMessage = 'Password is too weak';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error - please check your connection';
+          break;
+        default:
+          errorMessage = `Registration error: ${error.message}`;
+      }
+    }
+    
+    // Create error with code and message
+    const enhancedError = new Error(errorMessage);
+    Object.assign(enhancedError, { code: error.code, originalError: error });
+    throw enhancedError;
   }
 };
 

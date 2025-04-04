@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { loginUser, logoutUser } from '../services/firebaseService';
-import { getUserById } from '../services/realtimeDbService';
+import { getUserById, createUser } from '../services/realtimeDbService';
 import { User } from '../types/models';
 
 interface AuthContextType {
@@ -27,6 +27,16 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Global flag to track employee creation process
+// This is used to prevent redirects during employee creation
+let isCreatingEmployee = false;
+
+// Function to set the flag
+export const setEmployeeCreationFlag = (value: boolean) => {
+  isCreatingEmployee = value;
+  console.log(`Employee creation flag set to: ${value}`);
+};
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,12 +56,59 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.log('User data from Realtime Database:', userData);
           
           if (userData) {
+            // User exists in both Auth and Realtime DB - normal case
             setUser(userData);
             console.log('User authenticated with role:', userData.role);
+            
+            // Optional: Update last login time
+            // This would be a good place to update the user's last login time
           } else {
             // Handle the case where a user exists in Firebase Auth but not in Realtime Database
-            console.warn('User exists in Auth but not in Realtime Database:', authUser.uid);
-            setUser(null);
+            console.error('User exists in Auth but not in Realtime Database:', authUser.uid);
+            
+            // Check if we're in the middle of employee creation process
+            if (isCreatingEmployee) {
+              console.log('Employee creation in progress - keeping current auth state');
+              // Don't change the user state during employee creation
+              // This prevents redirect loops
+              return;
+            }
+            
+            // If we have enough information, we could try to recreate the user in the database
+            if (authUser.email && authUser.displayName) {
+              console.log('Attempting to recreate user in database');
+              try {
+                // Create a basic user record to allow login to proceed
+                await createUser(authUser.uid, {
+                  uid: authUser.uid,
+                  email: authUser.email,
+                  displayName: authUser.displayName,
+                  role: 'employee', // Default role - could be problematic if this was an admin
+                  photoURL: authUser.photoURL || null,
+                  createdAt: new Date().toISOString(),
+                  lastLogin: new Date().toISOString(),
+                  active: true
+                });
+                
+                // Fetch the newly created user data
+                const recreatedUser = await getUserById(authUser.uid);
+                if (recreatedUser) {
+                  console.log('Successfully recreated user data in Realtime Database');
+                  setUser(recreatedUser);
+                } else {
+                  console.error('Failed to recreate user data');
+                  setUser(null);
+                  setError('User profile could not be loaded. Please contact support.');
+                }
+              } catch (recreateErr) {
+                console.error('Error recreating user in database:', recreateErr);
+                setUser(null);
+                setError('Failed to reload your user profile. Please try logging in again.');
+              }
+            } else {
+              setUser(null);
+              setError('User profile is incomplete. Please log out and log in again.');
+            }
           }
         } else {
           console.log('No authenticated user');

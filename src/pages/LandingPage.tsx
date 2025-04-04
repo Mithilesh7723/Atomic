@@ -22,7 +22,10 @@ import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { ref, get, getDatabase } from 'firebase/database';
 
 const LandingPage = () => {
-  const [showLogin, setShowLogin] = useState(false);
+  const [showLogin, setShowLogin] = useState(() => {
+    const savedState = localStorage.getItem('atomhr_showLogin');
+    return savedState ? savedState === 'true' : false;
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -54,66 +57,115 @@ const LandingPage = () => {
     }
   }, [authError]);
 
+  // Keep login form visible when auth state changes with errors
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      // If user is null (logged out) and there's a form error, 
+      // make sure we stay on the login screen
+      if (!user && formError) {
+        updateShowLogin(true);
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [formError]);
+
+  // Custom function to update showLogin state and persist to localStorage
+  const updateShowLogin = (value: boolean) => {
+    localStorage.setItem('atomhr_showLogin', value.toString());
+    setShowLogin(value);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setIsLoading(true);
     
     // Check if loginType is set
     if (!loginType) {
       setFormError('Please select whether you are an employee or admin.');
+      setIsLoading(false);
       return;
     }
     
     try {
       if (isRegistering) {
-        // Registration not available from landing page in this implementation
-        // Only admin can create new users
-        setFormError('Registration is disabled. Please contact your administrator.');
-        return;
-      } else {
-        // Direct Firebase authentication approach
-        const auth = getAuth();
-        const db = getDatabase();
-        
-        console.log('Attempting direct login with:', email, password);
-        console.log('Login type:', loginType);
-        
-        // Direct Firebase auth
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        console.log('Auth successful, user:', user.uid);
-        
-        // Check user data in DB
-        const userRef = ref(db, `users/${user.uid}`);
-        const snapshot = await get(userRef);
-        console.log('User data in database:', snapshot.exists() ? snapshot.val() : 'No data');
-        
-        if (snapshot.exists()) {
-          const userData = snapshot.val();
-          console.log('User role:', userData.role);
-          
-          // Check if user role matches the selected login type
-          if (userData.role !== loginType) {
-            setFormError(`You selected ${loginType} login but your account is registered as ${userData.role}`);
-            return;
-          }
-          
-          if (userData.role === 'admin') {
-            console.log('Navigating to admin dashboard');
-            navigate('/admin');
-          } else if (userData.role === 'employee') {
-            console.log('Navigating to employee dashboard');
-            navigate('/dashboard');
-          } else {
-            setFormError('Unknown user role');
-          }
-        } else {
-          setFormError('User profile not found in database');
+        // Registration is only available for admin users
+        if (loginType === 'employee') {
+          setFormError('Employee registration is disabled. Please contact your administrator to create an account.');
+          setIsLoading(false);
+          return;
         }
+        
+        setFormError('Registration is disabled. Please contact your administrator.');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Direct Firebase authentication approach
+      const auth = getAuth();
+      const db = getDatabase();
+      
+      console.log('Attempting direct login with:', email, password);
+      console.log('Login type:', loginType);
+      
+      // Direct Firebase auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      console.log('Auth successful, user:', user.uid);
+      
+      // Check user data in DB
+      const userRef = ref(db, `users/${user.uid}`);
+      const snapshot = await get(userRef);
+      console.log('User data in database:', snapshot.exists() ? snapshot.val() : 'No data');
+      
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        console.log('User role:', userData.role);
+        
+        // Check for role mismatch before doing anything else
+        if (userData.role !== loginType) {
+          // Immediately sign out but keep the login form visible
+          await auth.signOut();
+          
+          if (userData.role === 'admin' && loginType === 'employee') {
+            setFormError('This account is an admin account. Please use the administrator login panel instead.');
+          } else if (userData.role === 'employee' && loginType === 'admin') {
+            setFormError('This account is an employee account. Please use the employee login panel instead.');
+          } else {
+            setFormError(`Account has an invalid role: ${userData.role}. Please contact system administrator.`);
+          }
+          setIsLoading(false);
+          // Make sure showLogin stays true to keep the login form visible
+          updateShowLogin(true);
+          return;
+        }
+        
+        // Only navigate if the role matches the login type
+        if (userData.role === 'admin' && loginType === 'admin') {
+          console.log('Navigating to admin dashboard');
+          navigate('/admin');
+        } else if (userData.role === 'employee' && loginType === 'employee') {
+          console.log('Navigating to employee dashboard');
+          navigate('/dashboard');
+        } else {
+          setFormError('Unknown user role');
+          setIsLoading(false);
+        }
+      } else {
+        await auth.signOut();
+        setFormError('User profile not found in database');
+        setIsLoading(false);
+        // Keep the login form visible
+        updateShowLogin(true);
       }
     } catch (err: any) {
       console.error('Authentication error:', err);
       setFormError(err.message || 'Authentication failed');
+      setIsLoading(false);
+      // Keep login form visible on any authentication error
+      updateShowLogin(true);
     }
   };
 
@@ -199,13 +251,20 @@ const LandingPage = () => {
           <div className="absolute w-full h-[300px] bottom-0 bg-gradient-to-t from-blue-900/20 to-transparent animate-cosmic-wave animation-delay-4000"></div>
         </div>
         
-        {/* Comets */}
+        {/* Comets - Improved with better positioning and angles */}
         <div className="absolute inset-0 z-0 overflow-hidden">
-          <div className="absolute w-[150px] h-[3px] bg-gradient-to-r from-transparent via-white to-transparent animate-comet animation-delay-2000"></div>
-          <div className="absolute w-[100px] h-[2px] bg-gradient-to-r from-transparent via-white to-transparent animate-comet animation-delay-8000"
-            style={{ top: '20%' }}></div>
-          <div className="absolute w-[200px] h-[4px] bg-gradient-to-r from-transparent via-indigo-300 to-transparent animate-comet animation-delay-6000"
-            style={{ top: '70%' }}></div>
+          <div 
+            className="absolute w-[150px] h-[3px] bg-gradient-to-r from-transparent via-white to-transparent animate-comet animation-delay-2000"
+            style={{ top: '15%', left: '-10%', transform: 'rotate(45deg)' }}
+          ></div>
+          <div 
+            className="absolute w-[100px] h-[2px] bg-gradient-to-r from-transparent via-white to-transparent animate-comet animation-delay-8000"
+            style={{ top: '35%', left: '-10%', transform: 'rotate(30deg)' }}
+          ></div>
+          <div 
+            className="absolute w-[200px] h-[4px] bg-gradient-to-r from-transparent via-indigo-300 to-transparent animate-comet animation-delay-6000"
+            style={{ top: '65%', left: '-10%', transform: 'rotate(60deg)' }}
+          ></div>
         </div>
         
         {/* Floating orbs - slowed down */}
@@ -273,16 +332,52 @@ const LandingPage = () => {
 
             {/* Display error message if any */}
             {formError && (
-              <div className="mb-5 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-white text-sm flex items-start">
-                <AlertCircle className="w-5 h-5 text-red-400 mr-2 mt-0.5 flex-shrink-0" />
-                <span>{formError}</span>
+              <div className="mb-5 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-white text-sm flex flex-col items-start">
+                <div className="flex items-start">
+                  <AlertCircle className="w-5 h-5 text-red-400 mr-2 mt-0.5 flex-shrink-0" />
+                  <span>{formError}</span>
+                </div>
+                
+                {/* Show quick switch button if we detect they should be using the other login type */}
+                {formError.includes('admin account') && (
+                  <button 
+                    onClick={() => {
+                      setLoginType('admin');
+                      setEmail('');
+                      setPassword('');
+                      setFormError(null);
+                    }}
+                    className="mt-2 ml-7 text-indigo-300 hover:text-indigo-200 text-sm underline"
+                  >
+                    Switch to administrator login
+                  </button>
+                )}
+                
+                {formError.includes('employee account') && (
+                  <button 
+                    onClick={() => {
+                      setLoginType('employee');
+                      setEmail('');
+                      setPassword('');
+                      setFormError(null);
+                      setIsRegistering(false);
+                    }}
+                    className="mt-2 ml-7 text-indigo-300 hover:text-indigo-200 text-sm underline"
+                  >
+                    Switch to employee login
+                  </button>
+                )}
               </div>
             )}
 
             {!loginType ? (
               <div className="space-y-5">
                 <button 
-                  onClick={() => setLoginType('employee')} 
+                  onClick={() => {
+                    setLoginType('employee'); 
+                    // Ensure registration is disabled for employee login
+                    setIsRegistering(false);
+                  }} 
                   className="w-full relative py-4 px-5 rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-all group"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg" />
@@ -317,7 +412,7 @@ const LandingPage = () => {
                 
                 <div className="pt-2">
                   <button 
-                    onClick={() => setShowLogin(false)} 
+                    onClick={() => updateShowLogin(false)} 
                     className="text-white/60 text-sm hover:text-white transition-colors"
                   >
                     Return to home
@@ -331,7 +426,13 @@ const LandingPage = () => {
                     <label htmlFor="email" className="text-white/80 text-sm font-medium">Email</label>
                     <button
                       type="button"
-                      onClick={() => setLoginType(null)}
+                      onClick={() => {
+                        setLoginType(null);
+                        setEmail('');
+                        setPassword('');
+                        setFormError(null);
+                        setIsRegistering(false);
+                      }}
                       className="text-xs text-indigo-300 hover:text-indigo-200"
                     >
                       Switch login type
@@ -417,13 +518,16 @@ const LandingPage = () => {
                 </button>
                 
                 <div className="text-center pt-2">
-                  <button 
-                    type="button"
-                    onClick={() => setIsRegistering(!isRegistering)} 
-                    className="text-indigo-300 text-sm hover:text-indigo-200 transition-colors"
-                  >
-                    {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
-                  </button>
+                  {/* Only show registration option for admin login, not for employee */}
+                  {loginType === 'admin' && (
+                    <button 
+                      type="button"
+                      onClick={() => setIsRegistering(!isRegistering)} 
+                      className="text-indigo-300 text-sm hover:text-indigo-200 transition-colors"
+                    >
+                      {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
+                    </button>
+                  )}
                 </div>
               </form>
             )}
@@ -487,7 +591,7 @@ const LandingPage = () => {
             </p>
             
             <button
-              onClick={() => setShowLogin(true)}
+              onClick={() => updateShowLogin(true)}
               className="glass-button-primary px-8 py-4 rounded-xl font-medium inline-flex items-center group text-lg"
             >
               Get Started

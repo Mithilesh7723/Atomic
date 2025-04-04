@@ -204,12 +204,29 @@ export const createGoal = async (goalData: Omit<Goal, 'id'>): Promise<Goal> => {
   const newGoalRef = push(goalsRef);
   const goalId = newGoalRef.key as string;
   
-  const goal: Goal = {
+  // Ensure all date fields are properly formatted as ISO strings
+  const formattedGoalData = {
     ...goalData,
-    id: goalId,
-    createdAt: goalData.createdAt || new Date(),
-    updatedAt: goalData.updatedAt || new Date()
+    // Convert Date objects to ISO strings for consistency
+    targetDate: goalData.targetDate instanceof Date 
+      ? goalData.targetDate.toISOString() 
+      : typeof goalData.targetDate === 'string' 
+        ? new Date(goalData.targetDate).toISOString() 
+        : new Date().toISOString(),
+    createdAt: goalData.createdAt instanceof Date 
+      ? goalData.createdAt.toISOString() 
+      : new Date().toISOString(),
+    updatedAt: goalData.updatedAt instanceof Date 
+      ? goalData.updatedAt.toISOString() 
+      : new Date().toISOString()
   };
+  
+  const goal: Goal = {
+    ...formattedGoalData,
+    id: goalId
+  };
+  
+  console.log('Creating goal with formatted dates:', goal);
   
   await set(newGoalRef, goal);
   
@@ -245,7 +262,25 @@ export const createGoal = async (goalData: Omit<Goal, 'id'>): Promise<Goal> => {
 
 export const updateGoal = async (goalId: string, updates: Partial<Goal>): Promise<void> => {
   const goalRef = ref(realtimeDb, `goals/${goalId}`);
-  await update(goalRef, { ...updates, updatedAt: new Date() });
+  
+  // Format any date fields to ensure consistency
+  const formattedUpdates = { ...updates };
+  
+  // Handle targetDate if it's being updated
+  if (updates.targetDate) {
+    formattedUpdates.targetDate = updates.targetDate instanceof Date 
+      ? updates.targetDate.toISOString() 
+      : typeof updates.targetDate === 'string'
+        ? new Date(updates.targetDate).toISOString()
+        : updates.targetDate;
+  }
+  
+  // Always update the updatedAt timestamp
+  formattedUpdates.updatedAt = new Date().toISOString();
+  
+  console.log('Updating goal with formatted dates:', formattedUpdates);
+  
+  await update(goalRef, formattedUpdates);
 };
 
 export const deleteGoal = async (id: string): Promise<void> => {
@@ -298,71 +333,102 @@ export const createFeedback = async (feedbackData: Omit<Feedback, 'id'>): Promis
   const newFeedbackRef = push(feedbacksRef);
   const feedbackId = newFeedbackRef.key as string;
   
+  // Ensure createdAt is a proper date string
+  const createdAt = feedbackData.createdAt instanceof Date 
+    ? feedbackData.createdAt.toISOString() 
+    : new Date().toISOString();
+  
   const feedback: Feedback = {
     ...feedbackData,
     id: feedbackId,
-    createdAt: feedbackData.createdAt || new Date()
+    createdAt
   };
   
   await set(newFeedbackRef, feedback);
   
-  // Create notification based on the type of feedback
   try {
-    // Get employee data to get the user ID
-    const employeeRef = ref(realtimeDb, `employees/${feedbackData.employeeId}`);
-    const employeeSnapshot = await get(employeeRef);
-    
-    if (employeeSnapshot.exists()) {
-      const employee = employeeSnapshot.val();
+    // Handle feedback notifications based on type
+    if (feedbackData.category?.startsWith('request-')) {
+      console.log('Processing feedback request notification for admins');
       
-      if (employee.userId) {
-        // Handle different notification types
-        if (feedbackData.category.startsWith('request-')) {
-          // This is a feedback request from an employee to admin
-          // Notify admins (in a real app, you'd handle admin notifications differently)
-          const adminUsersRef = ref(realtimeDb, 'users');
-          const adminUsersQuery = query(adminUsersRef, orderByChild('role'), equalTo('admin'));
-          const adminsSnapshot = await get(adminUsersQuery);
-          
-          if (adminsSnapshot.exists()) {
-            const admins = adminsSnapshot.val();
-            
-            // Create notification for each admin
-            const adminNotificationPromises = Object.keys(admins).map(adminId => 
-              createNotification({
-                userId: adminId,
-                title: 'New Feedback Request',
-                message: `${employee.name} has requested feedback: ${feedbackData.content}`,
-                type: 'request',
-                read: false,
-                createdAt: new Date(),
-                relatedItemId: feedbackId,
-                relatedItemType: 'feedback'
-              })
-            );
-            
-            await Promise.all(adminNotificationPromises);
+      // Workaround for the indexOn issue - get all users and filter on the client side
+      // This avoids the need for a Firebase index
+      const usersRef = ref(realtimeDb, 'users');
+      const allUsersSnapshot = await get(usersRef);
+      
+      if (allUsersSnapshot.exists()) {
+        // Get employee details for the notification
+        let employeeName = feedbackData.requestedBy || 'An employee';
+        if (feedbackData.employeeId) {
+          try {
+            const employeeRef = ref(realtimeDb, `employees/${feedbackData.employeeId}`);
+            const employeeSnapshot = await get(employeeRef);
+            if (employeeSnapshot.exists()) {
+              const employee = employeeSnapshot.val();
+              employeeName = employee.name || employeeName;
+            }
+          } catch (err) {
+            console.error('Error getting employee details for notification:', err);
           }
-        } else if (feedbackData.reviewerId) {
-          // This is feedback or a review given to an employee
-          await createNotification({
-            userId: employee.userId,
-            title: feedbackData.category === 'performance review' ? 'New Performance Review' : 'New Feedback',
-            message: feedbackData.category === 'performance review' 
-              ? `You have received a new performance review` 
-              : `You have received new feedback: ${feedbackData.content.substring(0, 50)}${feedbackData.content.length > 50 ? '...' : ''}`,
-            type: feedbackData.category === 'performance review' ? 'review' : 'feedback',
+        }
+        
+        // Filter admin users on the client side
+        const allUsers = allUsersSnapshot.val();
+        const adminUsers = Object.entries(allUsers)
+          .filter(([_, user]: [string, any]) => user.role === 'admin')
+          .map(([id, _]: [string, any]) => id);
+        
+        console.log(`Found ${adminUsers.length} admin users to notify`);
+        
+        // Create notification for each admin
+        const notificationPromises = adminUsers.map(adminId => {
+          console.log(`Creating notification for admin: ${adminId}`);
+          return createNotification({
+            userId: adminId,
+            title: 'New Feedback Request',
+            message: `${employeeName} has requested ${feedbackData.category.replace('request-', '')} feedback`,
+            type: 'request',
             read: false,
             createdAt: new Date(),
             relatedItemId: feedbackId,
             relatedItemType: 'feedback'
           });
+        });
+        
+        await Promise.all(notificationPromises);
+        console.log(`Created notifications for ${notificationPromises.length} admins`);
+      } else {
+        console.log('No users found for notifications');
+      }
+    } else if (feedbackData.employeeId) {
+      // Regular feedback given to an employee
+      // Create notification for the employee
+      try {
+        const employeeRef = ref(realtimeDb, `employees/${feedbackData.employeeId}`);
+        const employeeSnapshot = await get(employeeRef);
+        
+        if (employeeSnapshot.exists()) {
+          const employee = employeeSnapshot.val();
+          if (employee.userId) {
+            await createNotification({
+              userId: employee.userId,
+              title: 'New Feedback',
+              message: `You've received new feedback from ${feedbackData.reviewerName || 'your manager'}`,
+              type: 'feedback',
+              read: false,
+              createdAt: new Date(),
+              relatedItemId: feedbackId,
+              relatedItemType: 'feedback'
+            });
+          }
         }
+      } catch (err) {
+        console.error('Error creating notification for employee:', err);
       }
     }
   } catch (error) {
-    console.error('Error creating notification for feedback:', error);
-    // Don't throw here - we don't want to fail the feedback creation if notification fails
+    console.error('Error handling notifications for feedback:', error);
+    // Don't throw error to avoid failing the feedback creation
   }
   
   return feedback;
@@ -663,9 +729,15 @@ export const createNotification = async (notificationData: Omit<Notification, 'i
   const newNotificationRef = push(notificationsRef);
   const notificationId = newNotificationRef.key as string;
   
+  // Ensure createdAt is a proper date string
+  const createdAt = notificationData.createdAt instanceof Date 
+    ? notificationData.createdAt.toISOString() 
+    : new Date().toISOString();
+  
   const notification: Notification = {
     ...notificationData,
     id: notificationId,
+    createdAt
   };
   
   await set(newNotificationRef, notification);

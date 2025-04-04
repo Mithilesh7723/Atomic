@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, setEmployeeCreationFlag } from '../context/AuthContext';
 import { 
   Users, 
   LogOut, 
@@ -42,7 +42,16 @@ import { registerUser, deleteUserAccount } from '../services/firebaseService';
 import Leaderboard from '../components/Leaderboard';
 import { ref, query, orderByChild, equalTo, get, update } from 'firebase/database';
 import { realtimeDb } from '../config/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../config/firebase';
 import NotificationBell from '../components/NotificationBell';
+
+// Add this near the top of the file, before the component declaration
+declare global {
+  interface Window {
+    notificationTimeout: ReturnType<typeof setTimeout> | undefined;
+  }
+}
 
 interface Employee {
   id: string;
@@ -148,7 +157,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ employee, onClose, onSubmit }
                 <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3">
                   <UserCircle className="w-6 h-6 text-indigo-300" />
                 </div>
-                <h3 className="text-xl font-semibold text-white">360° Review for {employee.name}</h3>
+                <h3 className="text-xl font-semibold text-white">360Â° Review for {employee.name}</h3>
               </div>
               <button 
                 onClick={onClose} 
@@ -208,7 +217,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ employee, onClose, onSubmit }
                   className="px-4 py-2 glass-button-primary rounded-lg flex items-center"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
-                  Submit 360° Review
+                  Submit 360Â° Review
                 </button>
               </div>
             </form>
@@ -270,8 +279,12 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
   }, [employee.id]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="glass-card max-w-md w-full p-1 animate-scale-in">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div className="glass-card max-w-md w-full p-1 animate-scale-in" style={{
+        backgroundColor: 'rgba(30, 27, 75, 0.85)',
+        backdropFilter: 'blur(12px)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+      }}>
         <div className="rounded-xl p-6 relative overflow-hidden">
           {/* Shimmering border effect */}
           <div className="absolute inset-0 animated-gradient opacity-20"></div>
@@ -279,7 +292,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
           <div className="relative z-10">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center">
-                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center mr-3">
+                <div className="w-10 h-10 rounded-full bg-purple-500/30 flex items-center justify-center mr-3">
                   <MessageSquare className="w-6 h-6 text-purple-300" />
                 </div>
                 <h3 className="text-xl font-semibold text-white">
@@ -295,7 +308,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
             </div>
             
             {isResponse && (
-              <div className="glass p-4 rounded-xl mb-4">
+              <div className="p-4 rounded-xl mb-4" style={{ backgroundColor: 'rgba(99, 102, 241, 0.15)' }}>
                 <h4 className="text-sm font-medium text-white/80 mb-2">Employee's Request:</h4>
                 <p className="text-white/70 text-sm">{requestDescription}</p>
               </div>
@@ -308,7 +321,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl glass-input focus:scale-[1.01] transition-all duration-300 appearance-none"
+                    className="w-full px-4 py-3 rounded-xl focus:scale-[1.01] transition-all duration-300 appearance-none bg-indigo-900/50 text-white border border-indigo-500/20"
                   >
                     <option value="praise" className="bg-gray-800 text-white">Praise</option>
                     <option value="improvement" className="bg-gray-800 text-white">Area for Improvement</option>
@@ -327,28 +340,25 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ employee, onClose, onSubm
                   <textarea
                     value={feedback}
                     onChange={(e) => setFeedback(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl glass-input focus:scale-[1.01] transition-all duration-300"
+                    className="w-full px-4 py-3 rounded-xl focus:scale-[1.01] transition-all duration-300 bg-indigo-900/50 text-white border border-indigo-500/20"
                     rows={4}
                     placeholder="Share your constructive feedback..."
                     required
                   />
-                  <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
-                    <div className="animate-shimmer w-full h-full transform -translate-x-full"></div>
                   </div>
                 </div>
-              </div>
               
               <div className="flex justify-end space-x-3 pt-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 glass-button rounded-lg"
+                  className="px-4 py-2 bg-indigo-900/60 hover:bg-indigo-800 text-white rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 glass-button-primary rounded-lg flex items-center"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center transition-colors"
                 >
                   <MessageSquare className="w-4 h-4 mr-2" />
                   {isResponse ? 'Send Response' : 'Submit Feedback'}
@@ -370,9 +380,15 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ onClose, onSubmit }
   const [department, setDepartment] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Ensure the default form submission behavior is prevented
+    // Prevent any form submission and navigation
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Force stay on current page
+    window.history.pushState(null, '', window.location.href);
     
     // Validate password length (Firebase requires at least 6 characters)
     if (password.length < 6) {
@@ -384,13 +400,19 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ onClose, onSubmit }
     setIsLoading(true);
     
     try {
+      // Call onSubmit but catch any errors that might cause navigation
       await onSubmit({ name, email, password, position, department });
-      // Don't close the modal here - it will be closed by the parent component on success
+      // The parent component will handle closing the modal on success
     } catch (error) {
       console.error("Error in form submission:", error);
       setValidationError("An error occurred while adding the employee. Please try again.");
+      
+      // Ensure we stay on the admin page even after error
+      if (window.location.pathname !== '/admin') {
+        navigate('/admin', { replace: true });
+      }
     } finally {
-      setIsLoading(false); // Always reset loading state
+      setIsLoading(false);
     }
   };
 
@@ -982,42 +1004,7 @@ const AdminDashboard = () => {
       // Check for pending feedback requests
       await fetchPendingFeedbackRequests(employeesData);
 
-      // Create recent activities from employee data
-      // This would ideally come from a dedicated activity log in a real app
-      const recentFeedbacks = employeesData
-        .slice(0, 3)
-        .map((emp, index) => {
-          // Create random dates ranging from hours to days ago
-          const timeOffsets = [
-            Math.floor(Math.random() * 5 * 60 * 60 * 1000), // 0-5 hours ago
-            Math.floor(Math.random() * 3 * 24 * 60 * 60 * 1000) + 24 * 60 * 60 * 1000, // 1-4 days ago
-            Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000) + 3 * 24 * 60 * 60 * 1000, // 3-10 days ago
-          ];
-          
-          return {
-            type: index === 0 ? 'review' as const : 'feedback' as const,
-            message: index === 0 
-              ? `You submitted a performance review for ${emp.name}`
-              : `You provided feedback to ${emp.name}`,
-            timestamp: new Date(Date.now() - timeOffsets[index]),
-            employeeName: emp.name
-          };
-        });
-      
-      setRecentActivity(prev => {
-        // Combine existing feedback requests with the demo activities
-        // but avoid duplicates
-        const demoActivities = recentFeedbacks.filter(item => 
-          !prev.some(existing => 
-            existing.type === 'request' && 
-            existing.employeeName === item.employeeName
-          )
-        );
-        
-        return [...prev, ...demoActivities].sort((a, b) => 
-          b.timestamp.getTime() - a.timestamp.getTime()
-        ).slice(0, 5);
-      });
+      // Remove the demo data generation - we'll only show real activities now
     } catch (err: any) {
       console.error('Error fetching employees', err);
       setError('Failed to load employees');
@@ -1057,7 +1044,7 @@ const AdminDashboard = () => {
             };
           });
           
-          // Add requests to recent activities
+          // Add requests to recent activities - ensure proper sorting by time
           setRecentActivity(prev => {
             // Filter out duplicate requests (by employeeId and message)
             const uniqueRequests = requestActivities.filter(req => 
@@ -1068,9 +1055,20 @@ const AdminDashboard = () => {
               )
             );
             
-            return [...uniqueRequests, ...prev].sort((a, b) => 
-              b.timestamp.getTime() - a.timestamp.getTime()
-            ).slice(0, 10);
+            // Combine with real activities only, no demo data
+            const combinedActivities = [...uniqueRequests, ...prev];
+            
+            // Ensure all timestamps are actual Date objects
+            combinedActivities.forEach(activity => {
+              if (!(activity.timestamp instanceof Date)) {
+                activity.timestamp = new Date(activity.timestamp);
+              }
+            });
+            
+            // Sort by timestamp, newest first
+            return combinedActivities
+              .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+              .slice(0, 10);
           });
         }
       }
@@ -1090,7 +1088,12 @@ const AdminDashboard = () => {
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3000);
+    // Clear existing timeout if there is one
+    if (window.notificationTimeout) {
+      clearTimeout(window.notificationTimeout);
+    }
+    // Set timeout to clear notification after 5 seconds
+    window.notificationTimeout = setTimeout(() => setNotification(null), 5000);
   };
 
   const handleReviewSubmit = async (ratings: {
@@ -1170,12 +1173,12 @@ const AdminDashboard = () => {
       // Add to recent activity
       setRecentActivity(prev => [{
         type: 'review',
-        message: `You submitted a 360° performance review for ${selectedEmployee.name}`,
+        message: `You submitted a 360Â° performance review for ${selectedEmployee.name}`,
         timestamp: new Date(),
         employeeName: selectedEmployee.name
       }, ...prev.slice(0, 4)]);
       
-      showNotification('success', `360° review for ${selectedEmployee.name} submitted successfully`);
+      showNotification('success', `360Â° review for ${selectedEmployee.name} submitted successfully`);
       
     } catch (err: any) {
       console.error('Error submitting review', err);
@@ -1232,15 +1235,17 @@ const AdminDashboard = () => {
         }
       }
       
-      // Add to recent activity
-      setRecentActivity(prev => [{
-        type: 'feedback',
+      // Add to recent activity - ensure newest is at the top
+      const newActivity = {
+        type: 'feedback' as const,
         message: isResponse 
           ? `You responded to a feedback request from ${selectedEmployee.name}`
           : `You provided ${type} feedback to ${selectedEmployee.name}`,
         timestamp: new Date(),
         employeeName: selectedEmployee.name
-      }, ...prev.slice(0, 4)]);
+      };
+      
+      setRecentActivity(prev => [newActivity, ...prev.slice(0, 9)]);
       
       showNotification('success', isResponse 
         ? 'Response sent successfully'
@@ -1262,8 +1267,46 @@ const AdminDashboard = () => {
     position: string;
     department: string;
   }) => {
+    // Lock navigation to admin dashboard
+    const lockToAdminPage = () => {
+      if (window.location.pathname !== '/admin') {
+        console.log("Forcing navigation back to admin dashboard");
+        navigate('/admin', { replace: true });
+      }
+    };
+
+    // Prevent any navigation that might be triggered
+    window.history.pushState(null, '', window.location.href);
+    
+    // Store the current auth state to prevent automatic authentication change
+    const currentAuthState = auth.currentUser;
+    
+    // Detect navigation attempts
+    const handlePopState = () => {
+      console.log("PopState detected - forcing admin view");
+      lockToAdminPage();
+    };
+    window.addEventListener('popstate', handlePopState);
+    
     setLoading(true);
+    
+    // Set the employee creation flag to true to prevent redirects
+    setEmployeeCreationFlag(true);
+    console.log("Starting employee creation process - navigation redirects disabled");
+    
+    // Set up auth change detection
+    let authChangeOccurred = false;
+    let authDetector: () => void = () => {};
+    
     try {
+      // Set up auth detection
+      authDetector = onAuthStateChanged(auth, (user) => {
+        if (user && user.uid !== currentAuthState?.uid) {
+          authChangeOccurred = true;
+          console.log("Auth state changed during employee creation");
+        }
+      });
+      
       // 1. Register user in Firebase Auth and create profile in Realtime DB
       const userData = await registerUser(
         employeeData.email,
@@ -1300,13 +1343,13 @@ const AdminDashboard = () => {
       // Show success message
       showNotification('success', `Employee ${employeeData.name} added successfully`);
       
+      // Force stay on admin dashboard if auth change was detected
+      if (authChangeOccurred) {
+        lockToAdminPage();
+      }
+      
     } catch (err: any) {
       console.error('Error adding employee', err);
-      
-      // Prevent default browser behavior that might cause navigation
-      if (err.preventDefault) {
-        err.preventDefault();
-      }
       
       // Provide user-friendly error messages
       let errorMessage = `Failed to add employee: ${err.message}`;
@@ -1325,7 +1368,18 @@ const AdminDashboard = () => {
       
       showNotification('error', errorMessage);
     } finally {
+      // Clean up all listeners
+      authDetector();
+      window.removeEventListener('popstate', handlePopState);
+      
       setLoading(false);
+      
+      // Reset the employee creation flag
+      setEmployeeCreationFlag(false);
+      console.log("Employee creation process complete - navigation redirects enabled");
+      
+      // Final check to ensure we're still on the admin page
+      setTimeout(() => lockToAdminPage(), 100);
     }
   };
 
@@ -1427,6 +1481,75 @@ const AdminDashboard = () => {
     }
   };
 
+  // Replace the loading screen with a skeleton loader
+  if (loading) {
+  return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 pb-10">
+        {/* Animated cosmic background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Include some basic cosmic background elements */}
+          <div className="absolute -top-20 -left-20 w-96 h-96 bg-blue-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
+          <div className="absolute top-1/3 -right-20 w-96 h-96 bg-purple-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
+        </div>
+
+        {/* Skeleton loading UI */}
+        <div className="relative z-10">
+          {/* Header skeleton */}
+          <div className="glass border-b border-white/10 py-4 px-8 mb-8">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-white/10 animate-pulse"></div>
+                <div className="ml-4 h-6 w-48 bg-white/10 rounded animate-pulse"></div>
+              </div>
+              <div className="flex space-x-4">
+                <div className="h-8 w-8 bg-white/10 rounded-full animate-pulse"></div>
+                <div className="h-8 w-24 bg-white/10 rounded-lg animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main content skeleton */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Cards grid skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="glass-card p-6 h-48">
+                  <div className="h-6 w-1/3 bg-white/10 rounded animate-pulse mb-4"></div>
+                  <div className="space-y-3">
+                    <div className="h-4 bg-white/10 rounded animate-pulse"></div>
+                    <div className="h-4 bg-white/10 rounded animate-pulse w-5/6"></div>
+                    <div className="h-4 bg-white/10 rounded animate-pulse w-2/3"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Table skeleton */}
+            <div className="glass-card p-6 mb-8">
+              <div className="h-6 w-48 bg-white/10 rounded animate-pulse mb-6"></div>
+              <div className="overflow-x-auto">
+                <div className="w-full divide-y divide-white/10">
+                  <div className="flex border-b border-white/10 pb-3">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="w-1/4 h-6 bg-white/10 rounded animate-pulse mr-4"></div>
+                    ))}
+                  </div>
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex py-3">
+                      {[...Array(4)].map((_, j) => (
+                        <div key={j} className="w-1/4 h-6 bg-white/10 rounded animate-pulse mr-4"></div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 pb-10">
       {/* Enhanced cosmic background with more visual elements */}
@@ -1475,7 +1598,7 @@ const AdminDashboard = () => {
           <div className="absolute top-[45%] left-[15%] w-1.5 h-1.5 bg-blue-200 rounded-full opacity-90 shadow-lg shadow-blue-500/50 animate-twinkle"></div>
           <div className="absolute top-[15%] left-[45%] w-2 h-2 bg-purple-200 rounded-full opacity-90 shadow-lg shadow-purple-500/50 animate-twinkle-slow animation-delay-2000"></div>
           <div className="absolute top-[65%] left-[80%] w-1.5 h-1.5 bg-indigo-200 rounded-full opacity-90 shadow-lg shadow-indigo-500/50 animate-twinkle animation-delay-4000"></div>
-        </div>
+      </div>
         
         {/* Floating particles */}
         <div className="absolute top-[30%] left-[20%] w-1 h-1 bg-white/20 rounded-full animate-float-particle"></div>
@@ -1528,13 +1651,13 @@ const AdminDashboard = () => {
                 onMarkAsRead={handleMarkNotificationAsRead} 
                 onMarkAllAsRead={handleMarkAllNotificationsAsRead}
               />
-              <button
+            <button
                 onClick={handleLogout}
                 className="flex items-center text-white/80 hover:text-white glass-button py-1.5 px-3 rounded-lg text-sm"
-              >
-                <LogOut className="w-4 h-4 mr-1.5" />
-                Logout
-              </button>
+            >
+              <LogOut className="w-4 h-4 mr-1.5" />
+              Logout
+            </button>
             </div>
           </div>
         </div>
@@ -1548,91 +1671,91 @@ const AdminDashboard = () => {
           </div>
         ) : (
           <>
-            {/* Stats Section */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="glass-card p-6 flex items-center">
-                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-                  <Users className="w-6 h-6 text-blue-300" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/70">Total Employees</div>
-                  <div className="text-2xl font-semibold text-white">{employees.length}</div>
-                </div>
-              </div>
-              
-              <div className="glass-card p-6 flex items-center">
-                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-                  <BarChart4 className="w-6 h-6 text-emerald-300" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/70">Average Performance</div>
-                  <div className="text-2xl font-semibold text-white">
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="glass-card p-6 flex items-center">
+            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+              <Users className="w-6 h-6 text-blue-300" />
+            </div>
+            <div>
+              <div className="text-sm text-white/70">Total Employees</div>
+              <div className="text-2xl font-semibold text-white">{employees.length}</div>
+            </div>
+          </div>
+          
+          <div className="glass-card p-6 flex items-center">
+            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+              <BarChart4 className="w-6 h-6 text-emerald-300" />
+            </div>
+            <div>
+              <div className="text-sm text-white/70">Average Performance</div>
+              <div className="text-2xl font-semibold text-white">
                     {employees.length > 0 
                       ? Math.round(employees.reduce((sum, emp) => sum + (emp.performanceScore || 0), 0) / employees.length)
                       : 0}%
-                  </div>
-                </div>
-              </div>
-              
-              <div className="glass-card p-6 flex items-center">
-                <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
-                  <LineChart className="w-6 h-6 text-purple-300" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/70">Reviews Completed</div>
-                  <div className="text-2xl font-semibold text-white">
-                    {employees.filter(emp => emp.performanceScore !== undefined).length}
-                  </div>
-                </div>
               </div>
             </div>
+          </div>
+          
+          <div className="glass-card p-6 flex items-center">
+            <div className="w-12 h-12 rounded-xl glass flex items-center justify-center mr-4">
+              <LineChart className="w-6 h-6 text-purple-300" />
+            </div>
+            <div>
+              <div className="text-sm text-white/70">Reviews Completed</div>
+              <div className="text-2xl font-semibold text-white">
+                    {employees.filter(emp => emp.performanceScore !== undefined).length}
+              </div>
+            </div>
+          </div>
+        </div>
 
             {/* Employee Overview and Leaderboard */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
               <div className="lg:col-span-2">
                 <div className="glass-card">
-                  <div className="p-6">
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-semibold text-white flex items-center">
-                        <Sparkles className="w-5 h-5 mr-2 text-indigo-300" />
-                        Employee Overview
-                      </h2>
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-white flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-indigo-300" />
+                Employee Overview
+              </h2>
                       <button 
                         onClick={() => setShowAddEmployeeModal(true)}
                         className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
                       >
-                        <PlusCircle className="w-4 h-4 mr-2" />
-                        Add Employee
-                      </button>
-                    </div>
-                    
+                <PlusCircle className="w-4 h-4 mr-2" />
+                Add Employee
+              </button>
+            </div>
+            
                     {loading && employees.length > 0 ? (
                       <div className="flex justify-center py-8">
                         <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-white/10">
-                          <thead>
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                                Name
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                                Position
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                                Performance
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-white/10">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Position
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Performance
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
                                 Department
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
-                                Actions
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/10">
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
                             {employees.length === 0 ? (
                               <tr>
                                 <td colSpan={5} className="px-6 py-8 text-center text-white/70">
@@ -1641,65 +1764,65 @@ const AdminDashboard = () => {
                               </tr>
                             ) : (
                               employees.map((employee) => (
-                                <tr key={employee.id} className="hover:bg-white/5 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center">
+                    <tr key={employee.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
                                       <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3 overflow-hidden">
                                         {employee.photoURL ? (
                                           <img src={employee.photoURL} alt={employee.name} className="w-full h-full object-cover" />
                                         ) : (
-                                          <UserCircle className="w-5 h-5 text-indigo-300" />
+                            <UserCircle className="w-5 h-5 text-indigo-300" />
                                         )}
-                                      </div>
-                                      <div className="text-sm font-medium text-white">{employee.name}</div>
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="text-sm text-white/80">{employee.position}</div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center">
-                                      <div className="w-full bg-white/10 rounded-full h-2 mr-2 max-w-[100px]">
-                                        <div
+                          </div>
+                          <div className="text-sm font-medium text-white">{employee.name}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-white/80">{employee.position}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="w-full bg-white/10 rounded-full h-2 mr-2 max-w-[100px]">
+                            <div
                                           className="h-full rounded-full bg-indigo-500" 
                                           style={{ width: `${employee.performanceScore || 0}%` }}
-                                        />
-                                      </div>
+                            />
+                          </div>
                                       <span className="text-sm text-white/80">{employee.performanceScore || 'N/A'}%</span>
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
                                     {employee.department}
-                                  </td>
+                      </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-white/80">
                                     <div className="flex space-x-2">
-                                      <button
-                                        onClick={() => {
+                        <button
+                          onClick={() => {
                                           setSelectedEmployee({
                                             ...employee,
                                             email: employee.email || '' // Ensure email is populated
                                           });
-                                          setShowReviewModal(true);
-                                        }}
+                            setShowReviewModal(true);
+                          }}
                                         className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white group"
                                         title="Submit Performance Review"
-                                      >
+                        >
                                         <Star className="w-4 h-4 group-hover:fill-yellow-400 transition-colors" />
-                                      </button>
+                        </button>
                                       
-                                      <button
-                                        onClick={() => {
+                        <button
+                          onClick={() => {
                                           setSelectedEmployee({
                                             ...employee,
                                             email: employee.email || '' // Ensure email is populated
                                           });
-                                          setShowFeedbackModal(true);
-                                        }}
+                            setShowFeedbackModal(true);
+                          }}
                                         className="glass-button p-1.5 rounded-lg text-white/80 hover:text-white"
                                         title="Send Feedback"
-                                      >
+                        >
                                         <MessageSquare className="w-4 h-4" />
-                                      </button>
+                        </button>
                                       
                                       <button
                                         onClick={() => {
@@ -1743,38 +1866,38 @@ const AdminDashboard = () => {
                                         <Trash2 className="w-4 h-4" />
                                       </button>
                                     </div>
-                                  </td>
-                                </tr>
+                      </td>
+                    </tr>
                               ))
                             )}
-                          </tbody>
-                        </table>
+                </tbody>
+              </table>
                       </div>
                     )}
-                  </div>
-                </div>
-              </div>
-              
+            </div>
+          </div>
+        </div>
+        
               <div className="lg:col-span-1">
                 <Leaderboard employees={employees} limit={5} />
               </div>
             </div>
 
-            <div className="glass-card">
-              <div className="p-6">
-                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                  <AlertCircle className="w-5 h-5 mr-2 text-indigo-300" />
-                  Recent Activities
-                </h2>
+        <div className="glass-card">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2 text-indigo-300" />
+              Recent Activities
+            </h2>
                 {recentActivity.length === 0 ? (
                   <div className="glass p-8 rounded-xl text-center text-white/70">
                     No recent activities found. Activities will appear here as you interact with employees.
                   </div>
                 ) : (
-                  <div className="space-y-4">
+            <div className="space-y-4">
                     {recentActivity.map((activity, i) => (
-                      <div key={i} className="glass p-4 rounded-xl hover:bg-white/10 transition-colors">
-                        <div className="flex items-start">
+                <div key={i} className="glass p-4 rounded-xl hover:bg-white/10 transition-colors">
+                  <div className="flex items-start">
                           <div className="flex flex-1">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
                               activity.type === 'review' ? 'bg-blue-500/20' : 
@@ -1788,14 +1911,14 @@ const AdminDashboard = () => {
                               {activity.type === 'employee' && <UserCircle className="w-5 h-5 text-indigo-300" />}
                               {activity.type === 'goal' && <FileText className="w-5 h-5 text-emerald-300" />}
                               {activity.type === 'request' && <AlertCircle className="w-5 h-5 text-amber-300" />}
-                            </div>
+                    </div>
                             <div className="flex-1">
                               <p className="text-white/90">{activity.message}</p>
-                              <p className="text-white/50 text-sm mt-1">
+                      <p className="text-white/50 text-sm mt-1">
                                 {formatRelativeTime(activity.timestamp)}
-                              </p>
-                            </div>
-                          </div>
+                      </p>
+                    </div>
+                  </div>
                           
                           {activity.type === 'request' && (
                             <button
@@ -1823,12 +1946,12 @@ const AdminDashboard = () => {
                             "{activity.requestContent}"
                           </div>
                         )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
+                )}
+          </div>
+        </div>
           </>
         )}
       </main>
@@ -1884,24 +2007,44 @@ const AdminDashboard = () => {
 
 // Helper function to format timestamps
 const formatRelativeTime = (date: Date) => {
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  
-  if (diffInSeconds < 60) return 'just now';
-  if (diffInSeconds < 3600) {
-    const mins = Math.floor(diffInSeconds / 60);
-    return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
+  try {
+    if (!date) return 'Recently';
+    
+    const now = new Date();
+    const targetDate = typeof date === 'string' ? new Date(date) : date;
+    
+    // Check if date is valid
+    if (isNaN(targetDate.getTime())) {
+      return 'Recently';
+    }
+    
+    const diffInSeconds = Math.floor((now.getTime() - targetDate.getTime()) / 1000);
+    
+    if (diffInSeconds < 5) return 'just now';
+    if (diffInSeconds < 60) return `${diffInSeconds} seconds ago`;
+    if (diffInSeconds < 3600) {
+      const mins = Math.floor(diffInSeconds / 60);
+      return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
+    }
+    if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+    }
+    if (diffInSeconds < 604800) {
+      const days = Math.floor(diffInSeconds / 86400);
+      return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+    }
+    
+    // Format date more clearly for older dates
+    return targetDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: targetDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return 'Recently';
   }
-  if (diffInSeconds < 86400) {
-    const hours = Math.floor(diffInSeconds / 3600);
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-  }
-  if (diffInSeconds < 604800) {
-    const days = Math.floor(diffInSeconds / 86400);
-    return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-  }
-  
-  return new Date(date).toLocaleDateString();
 };
 
 export default AdminDashboard;
