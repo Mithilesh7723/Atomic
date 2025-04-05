@@ -36,7 +36,8 @@ import {
   deleteEmployee as deleteEmployeeFunction,
   subscribeToNotifications,
   markNotificationAsRead,
-  markAllNotificationsAsRead
+  markAllNotificationsAsRead,
+  subscribeToEmployees
 } from '../services/realtimeDbService';
 import { registerUser, deleteUserAccount } from '../services/firebaseService';
 import Leaderboard from '../components/Leaderboard';
@@ -965,11 +966,21 @@ const AdminDashboard = () => {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [showEmployeeDetails, setShowEmployeeDetails] = useState(false);
 
+  // Setup realtime subscription to employees data
   useEffect(() => {
-    fetchEmployees();
+    // Subscribe to real-time updates for all employees
+    const unsubscribe = subscribeToEmployees((updatedEmployees) => {
+      console.log('Realtime employee data updated:', updatedEmployees.length);
+      setEmployees(updatedEmployees);
+    });
+    
+    // Cleanup function
+    return () => {
+      unsubscribe();
+    };
   }, []);
-
-  // Log selected employee when it changes
+  
+  // Log selected employee when it changes 
   useEffect(() => {
     if (selectedEmployee) {
       console.log("Selected employee updated:", selectedEmployee);
@@ -992,15 +1003,33 @@ const AdminDashboard = () => {
       unsubscribeNotifications();
     };
   }, [user]);
+  
+  // Initial data fetching
+  useEffect(() => {
+    console.log("AdminDashboard - Initial data loading");
+    const loadInitialData = async () => {
+      try {
+        setLoading(true);
+        await fetchEmployees();
+        // ... other initial data fetching
+      } catch (err) {
+        console.error("Error loading initial data:", err);
+        showNotification('error', 'Error loading dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchEmployees = async () => {
-    setLoading(true);
     try {
       const employeesData = await getAllEmployees();
-      console.log("Fetched employees data:", employeesData, "Length:", employeesData.length);
-      
+      console.log(`Fetched ${employeesData.length} employees`);
       setEmployees(employeesData);
-
+      
       // Check for pending feedback requests
       await fetchPendingFeedbackRequests(employeesData);
 
@@ -1043,8 +1072,6 @@ const AdminDashboard = () => {
     } catch (err: any) {
       console.error('Error fetching employees', err);
       setError('Failed to load employees');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1334,11 +1361,13 @@ const AdminDashboard = () => {
     let authDetector: () => void = () => {};
     
     try {
-      // Set up auth detection
+      // Set up auth detection - using onAuthStateChanged handler
       authDetector = onAuthStateChanged(auth, (user) => {
         if (user && user.uid !== currentAuthState?.uid) {
           authChangeOccurred = true;
           console.log("Auth state changed during employee creation");
+          // Force stay on admin dashboard immediately when auth change detected
+          lockToAdminPage();
         }
       });
       
@@ -1361,8 +1390,8 @@ const AdminDashboard = () => {
         updatedAt: new Date()
       });
       
-      // 3. Update the employees list with the new employee
-      setEmployees(prev => [...prev, newEmployee]);
+      // Note: No need to manually update the employees state here
+      // as the real-time subscription will handle the update automatically
       
       // 4. Add to recent activity
       setRecentActivity(prev => [{
@@ -1378,10 +1407,8 @@ const AdminDashboard = () => {
       // Show success message
       showNotification('success', `Employee ${employeeData.name} added successfully`);
       
-      // Force stay on admin dashboard if auth change was detected
-      if (authChangeOccurred) {
-        lockToAdminPage();
-      }
+      // Force stay on admin dashboard
+      lockToAdminPage();
       
     } catch (err: any) {
       console.error('Error adding employee', err);
@@ -1414,7 +1441,13 @@ const AdminDashboard = () => {
       console.log("Employee creation process complete - navigation redirects enabled");
       
       // Final check to ensure we're still on the admin page
-      setTimeout(() => lockToAdminPage(), 100);
+      lockToAdminPage();
+      
+      // Add additional protection against redirection on refresh
+      window.localStorage.setItem('adminView', 'true');
+      
+      // Force the URL to be the admin path
+      window.history.replaceState(null, '', '/admin');
     }
   };
 

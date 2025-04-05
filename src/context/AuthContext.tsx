@@ -51,14 +51,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (authUser) {
           console.log('Firebase Auth user:', authUser.uid);
           
+          // Check if we should stay on admin view (set during employee creation)
+          const shouldStayOnAdminView = window.localStorage.getItem('adminView') === 'true';
+          if (shouldStayOnAdminView) {
+            console.log('Admin view flag detected - preventing redirection to employee dashboard');
+            // Clear the flag after detecting it to ensure it's not persistent
+            window.localStorage.removeItem('adminView');
+          }
+          
           // Get the user data from Realtime Database
           const userData = await getUserById(authUser.uid);
           console.log('User data from Realtime Database:', userData);
           
           if (userData) {
             // User exists in both Auth and Realtime DB - normal case
-            setUser(userData);
-            console.log('User authenticated with role:', userData.role);
+            // Only set the user if we're not supposed to stay on admin view
+            // or if the user is an admin
+            if (!shouldStayOnAdminView || userData.role === 'admin') {
+              setUser(userData);
+              console.log('User authenticated with role:', userData.role);
+            } else {
+              console.log('Not setting employee user to prevent redirection from admin view');
+              // Don't set the user to prevent redirection
+              // This ensures we stay on the admin page
+            }
             
             // Optional: Update last login time
             // This would be a good place to update the user's last login time
@@ -94,7 +110,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 const recreatedUser = await getUserById(authUser.uid);
                 if (recreatedUser) {
                   console.log('Successfully recreated user data in Realtime Database');
-                  setUser(recreatedUser);
+                  
+                  // Only set the user if we're not supposed to stay on admin view
+                  if (!shouldStayOnAdminView || recreatedUser.role === 'admin') {
+                    setUser(recreatedUser);
+                  }
                 } else {
                   console.error('Failed to recreate user data');
                   setUser(null);

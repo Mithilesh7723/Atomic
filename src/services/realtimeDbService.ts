@@ -886,3 +886,36 @@ export const generateDemoNotifications = async (userId: string): Promise<void> =
   
   await Promise.all(notificationPromises);
 };
+
+// Add this function to subscribe to real-time updates for all employees
+export const subscribeToEmployees = (callback: (employees: Employee[]) => void): (() => void) => {
+  const employeesRef = ref(realtimeDb, 'employees');
+  
+  console.log("Setting up real-time subscription to employees");
+  
+  // Set up the listener
+  const handleEmployeesUpdate = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      const employeesData = snapshot.val();
+      const formattedEmployees = Object.keys(employeesData).map(key => ({
+        ...employeesData[key],
+        id: key
+      }));
+      
+      console.log(`Real-time employees update: ${formattedEmployees.length} employees`);
+      callback(formattedEmployees);
+    } else {
+      console.log("No employees found in database during real-time update");
+      callback([]);
+    }
+  };
+  
+  // Register the listener
+  onValue(employeesRef, handleEmployeesUpdate);
+  
+  // Return the unsubscribe function
+  return () => {
+    console.log("Unsubscribing from employees real-time updates");
+    off(employeesRef, 'value', handleEmployeesUpdate);
+  };
+};
