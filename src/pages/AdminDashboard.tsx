@@ -1004,7 +1004,42 @@ const AdminDashboard = () => {
       // Check for pending feedback requests
       await fetchPendingFeedbackRequests(employeesData);
 
-      // Remove the demo data generation - we'll only show real activities now
+      // Create recent activities from employee data
+      // This would ideally come from a dedicated activity log in a real app
+      const recentFeedbacks = employeesData
+        .slice(0, 3)
+        .map((emp, index) => {
+          // Create random dates ranging from hours to days ago
+          const timeOffsets = [
+            Math.floor(Math.random() * 5 * 60 * 60 * 1000), // 0-5 hours ago
+            Math.floor(Math.random() * 3 * 24 * 60 * 60 * 1000) + 24 * 60 * 60 * 1000, // 1-4 days ago
+            Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000) + 3 * 24 * 60 * 60 * 1000, // 3-10 days ago
+          ];
+          
+          return {
+            type: index === 0 ? 'review' as const : 'feedback' as const,
+            message: index === 0 
+              ? `You submitted a performance review for ${emp.name}`
+              : `You provided feedback to ${emp.name}`,
+            timestamp: new Date(Date.now() - timeOffsets[index]),
+            employeeName: emp.name
+          };
+        });
+      
+      setRecentActivity(prev => {
+        // Combine existing feedback requests with the demo activities
+        // but avoid duplicates
+        const demoActivities = recentFeedbacks.filter(item => 
+          !prev.some(existing => 
+            existing.type === 'request' && 
+            existing.employeeName === item.employeeName
+          )
+        );
+        
+        return [...prev, ...demoActivities].sort((a, b) => 
+          b.timestamp.getTime() - a.timestamp.getTime()
+        ).slice(0, 5);
+      });
     } catch (err: any) {
       console.error('Error fetching employees', err);
       setError('Failed to load employees');
@@ -1055,7 +1090,7 @@ const AdminDashboard = () => {
               )
             );
             
-            // Combine with real activities only, no demo data
+            // Combine and sort all activities by timestamp, newest first
             const combinedActivities = [...uniqueRequests, ...prev];
             
             // Ensure all timestamps are actual Date objects
