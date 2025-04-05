@@ -22,7 +22,10 @@ import {
   CheckCircle,
   Send,
   AlertTriangle,
-  Info
+  Info,
+  UserCheck,
+  Star,
+  Loader2
 } from 'lucide-react';
 import { 
   getEmployeeByUserId, 
@@ -37,7 +40,8 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteFeedback,
-  updateGoal
+  updateGoal,
+  createAdminRating
 } from '../services/realtimeDbService';
 import { Employee, Feedback, Goal, Metric, PerformanceMetric, Notification } from '../types/models';
 import FeedbackSection from './FeedbackSection';
@@ -45,6 +49,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, getStorage } from 'fire
 import Leaderboard from './Leaderboard';
 import NotificationBell from './NotificationBell';
 import GoalsTracker from './GoalsTracker';
+import RateAdminModal from './RateAdminModal';
 
 // Add this near the top of the file, before the component declarations
 declare global {
@@ -434,6 +439,7 @@ const Dashboard = () => {
   const [showRequestFeedback, setShowRequestFeedback] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showRateAdminModal, setShowRateAdminModal] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -789,6 +795,41 @@ const Dashboard = () => {
     }
   };
 
+  // Handle rating submission for admins/team leaders
+  const handleAdminRatingSubmit = async (adminId: string, ratings: {
+    leadership: number;
+    communication: number;
+    supportiveness: number;
+    technicalGuidance: number;
+  }, comment: string) => {
+    if (!employee) return;
+    
+    setLoading(true);
+    
+    try {
+      // Create the admin rating in the database
+      await createAdminRating({
+        adminId,
+        employeeId: employee.id,
+        ratings,
+        comment,
+        createdAt: new Date(),
+        isAnonymous: true // Default to anonymous ratings for honest feedback
+      });
+      
+      // Show success notification
+      handleSetNotification('success', 'Your leadership rating has been submitted');
+      
+      // Close the modal
+      setShowRateAdminModal(false);
+    } catch (error) {
+      console.error('Error submitting admin rating:', error);
+      handleSetNotification('error', 'Failed to submit rating. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900">
@@ -966,67 +1007,11 @@ const Dashboard = () => {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900">
-      {/* Enhanced cosmic background with more visual elements */}
+      {/* Background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Large animated blobs */}
         <div className="absolute -top-20 -left-20 w-96 h-96 bg-blue-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
         <div className="absolute top-1/3 -right-20 w-96 h-96 bg-purple-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
         <div className="absolute bottom-20 left-40 w-72 h-72 bg-pink-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-blob animation-delay-4000" />
-        
-        {/* Large cosmic elements */}
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-600/10 rounded-full filter blur-3xl opacity-70 animate-cosmic-wave" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-500/10 rounded-full filter blur-3xl opacity-60 animate-nebula-pulse" />
-        
-        {/* Galaxy/nebula elements with glow effect */}
-        <div className="absolute top-1/2 left-1/3 w-[300px] h-[300px] rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-600/5 filter blur-3xl opacity-40 animate-galaxy-spin animate-glow"></div>
-        <div className="absolute bottom-1/3 right-1/5 w-[400px] h-[400px] rounded-full bg-gradient-to-r from-blue-500/10 to-purple-600/5 filter blur-3xl opacity-30 animate-galaxy-spin animation-delay-3000 animate-glow"></div>
-        
-        {/* Light rays */}
-        <div className="absolute top-0 left-1/4 w-2 h-[100vh] bg-gradient-to-b from-indigo-500/0 via-indigo-500/5 to-indigo-500/0 blur-lg animate-light-ray"></div>
-        <div className="absolute top-0 right-1/3 w-1 h-[100vh] bg-gradient-to-b from-purple-500/0 via-purple-500/5 to-purple-500/0 blur-lg animate-light-ray animation-delay-3000"></div>
-        <div className="absolute top-0 left-2/3 w-1.5 h-[100vh] bg-gradient-to-b from-blue-500/0 via-blue-500/5 to-blue-500/0 blur-lg animate-light-ray animation-delay-5000"></div>
-        
-        {/* Twinkling stars - many different sizes and animations */}
-        <div className="absolute inset-0">
-          {/* Original stars */}
-          <div className="absolute top-1/5 left-1/4 w-1 h-1 bg-white rounded-full opacity-80 animate-pulse-slow" />
-          <div className="absolute top-1/3 left-1/2 w-1 h-1 bg-white rounded-full opacity-90 animate-pulse-slow animation-delay-2000" />
-          <div className="absolute top-2/3 left-1/3 w-1 h-1 bg-white rounded-full opacity-70 animate-pulse-slow animation-delay-4000" />
-          <div className="absolute top-1/6 right-1/4 w-1 h-1 bg-white rounded-full opacity-80 animate-pulse-slow animation-delay-6000" />
-          <div className="absolute bottom-1/3 right-1/5 w-1 h-1 bg-white rounded-full opacity-70 animate-pulse-slow" />
-          <div className="absolute bottom-1/4 left-1/6 w-1 h-1 bg-white rounded-full opacity-90 animate-pulse-slow animation-delay-8000" />
-          
-          {/* Additional twinkling stars */}
-          <div className="absolute top-[15%] left-[10%] w-1.5 h-1.5 bg-white rounded-full opacity-90 animate-twinkle" />
-          <div className="absolute top-[25%] left-[35%] w-0.5 h-0.5 bg-white rounded-full opacity-80 animate-twinkle animation-delay-1000" />
-          <div className="absolute top-[40%] left-[85%] w-1 h-1 bg-white rounded-full opacity-90 animate-twinkle animation-delay-2500" />
-          <div className="absolute top-[60%] left-[22%] w-0.5 h-0.5 bg-white rounded-full opacity-70 animate-twinkle-slow" />
-          <div className="absolute top-[75%] left-[65%] w-1 h-1 bg-white rounded-full opacity-90 animate-twinkle animation-delay-1500" />
-          <div className="absolute top-[10%] left-[75%] w-0.5 h-0.5 bg-white rounded-full opacity-80 animate-twinkle-slow animation-delay-3500" />
-          <div className="absolute top-[50%] left-[54%] w-1 h-1 bg-white rounded-full opacity-80 animate-twinkle animation-delay-5000" />
-          <div className="absolute top-[30%] left-[90%] w-1.5 h-1.5 bg-white rounded-full opacity-90 animate-twinkle-slow animation-delay-7000" />
-          <div className="absolute top-[85%] left-[40%] w-0.5 h-0.5 bg-white rounded-full opacity-70 animate-twinkle animation-delay-3000" />
-          <div className="absolute top-[20%] left-[60%] w-1 h-1 bg-white rounded-full opacity-80 animate-twinkle-slow animation-delay-9000" />
-          
-          {/* Glowing stars with halo effect */}
-          <div className="absolute top-[45%] left-[15%] w-1.5 h-1.5 bg-blue-200 rounded-full opacity-90 shadow-lg shadow-blue-500/50 animate-twinkle"></div>
-          <div className="absolute top-[15%] left-[45%] w-2 h-2 bg-purple-200 rounded-full opacity-90 shadow-lg shadow-purple-500/50 animate-twinkle-slow animation-delay-2000"></div>
-          <div className="absolute top-[65%] left-[80%] w-1.5 h-1.5 bg-indigo-200 rounded-full opacity-90 shadow-lg shadow-indigo-500/50 animate-twinkle animation-delay-4000"></div>
-        </div>
-        
-        {/* Floating particles */}
-        <div className="absolute top-[30%] left-[20%] w-1 h-1 bg-white/20 rounded-full animate-float-particle"></div>
-        <div className="absolute top-[60%] left-[70%] w-0.5 h-0.5 bg-white/30 rounded-full animate-float-particle animation-delay-2000"></div>
-        <div className="absolute top-[40%] left-[50%] w-1.5 h-1.5 bg-white/10 rounded-full animate-float-particle animation-delay-5000"></div>
-        <div className="absolute top-[20%] left-[80%] w-0.5 h-0.5 bg-white/20 rounded-full animate-float-particle animation-delay-3000"></div>
-        <div className="absolute top-[70%] left-[30%] w-1 h-1 bg-white/20 rounded-full animate-float-particle animation-delay-1500"></div>
-        
-        {/* Subtle cosmic waves */}
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 opacity-30 animate-aurora bg-size-200"></div>
-        
-        {/* Comet effect */}
-        <div className="absolute -top-20 -left-20 w-20 h-1 bg-white/40 rounded-full blur-sm transform rotate-45 animate-comet"></div>
-        <div className="absolute -bottom-20 -right-20 w-30 h-1.5 bg-blue-100/30 rounded-full blur-sm transform -rotate-45 animate-comet animation-delay-7000"></div>
       </div>
 
       {/* Notification */}
@@ -1062,7 +1047,7 @@ const Dashboard = () => {
               <span className="ml-3 text-xl font-semibold text-white">Employee Dashboard</span>
               {user && (
                 <span className="ml-4 text-sm text-white/60">
-                  Welcome, {user.displayName || employee.name}
+                  Welcome, {user.displayName || employee?.name}
                 </span>
               )}
             </div>
@@ -1085,165 +1070,142 @@ const Dashboard = () => {
       </nav>
 
       {/* Main content */}
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 relative z-10">
-        {/* Profile section */}
-        <div className="glass-card p-6 mb-8">
-          <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-            <User className="w-5 h-5 mr-2 text-indigo-300" />
-            My Profile
-          </h2>
-          
-          <div className="flex flex-col md:flex-row items-start gap-8">
-            {/* Profile photo */}
-            <div className="flex flex-col items-center">
-              <div className="relative group">
-                <div className="w-32 h-32 rounded-full bg-indigo-500/30 flex items-center justify-center overflow-hidden border-2 border-indigo-500/50">
-                  {employee.photoURL ? (
-                    <img 
-                      src={employee.photoURL} 
-                      alt={employee.name} 
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <User className="w-16 h-16 text-white" />
-                  )}
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Left column - 8/12 */}
+          <div className="md:col-span-8 space-y-8">
+            {/* Welcome card with profile overview */}
+            <div className="glass-card p-6">
+              {/* Employee info row */}
+              <div className="flex flex-col md:flex-row md:items-start gap-6">
+                {/* Profile photo section */}
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full bg-indigo-500/30 flex items-center justify-center overflow-hidden border-2 border-indigo-500/50">
+                      {employee?.photoURL ? (
+                        <img 
+                          src={employee.photoURL} 
+                          alt={employee.name} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <User className="w-12 h-12 text-indigo-300" />
+                      )}
+                    </div>
+                    <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center cursor-pointer hover:bg-indigo-600 transition-colors">
+                      <input 
+                        type="file" 
+                        ref={fileInputRef}
+                        onChange={handlePhotoUpload}
+                        className="hidden" 
+                        accept="image/*"
+                        disabled={uploadingPhoto}
+                      />
+                      {uploadingPhoto ? (
+                        <Loader2 className="w-4 h-4 text-white animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4 text-white" />
+                      )}
+                    </label>
+                  </div>
+                  <div className="text-center">
+                    <h2 className="text-xl font-semibold text-white">{employee?.name}</h2>
+                    <p className="text-indigo-300">{employee?.position}</p>
+                  </div>
                 </div>
                 
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingPhoto}
-                  className="absolute bottom-0 right-0 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full transition-colors shadow-lg"
-                >
-                  {uploadingPhoto ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Upload className="w-4 h-4" />
-                  )}
-                </button>
-                
-                <input 
-                  type="file" 
-                  ref={fileInputRef}
-                  onChange={handlePhotoUpload}
-                  accept="image/*"
-                  className="hidden"
-          />
-        </div>
-
-              <h3 className="text-lg font-medium text-white mt-4">{employee.name}</h3>
-              <p className="text-white/70 mb-1">{employee.position}</p>
-              <p className="text-white/50 text-sm">{employee.department}</p>
-            </div>
-            
-            {/* Profile details */}
-            <div className="flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="glass p-4 rounded-xl">
-                  <div className="flex items-center mb-2">
-                    <Mail className="w-4 h-4 text-indigo-300 mr-2" />
-                    <h4 className="text-sm font-medium text-white/80">Email</h4>
+                {/* Profile details */}
+                <div className="flex-1 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-medium text-white">Profile Details</h3>
+                    <button 
+                      onClick={() => setShowEditProfile(true)}
+                      className="glass-button px-3 py-1.5 text-sm rounded-lg flex items-center"
+                    >
+                      <Edit className="w-4 h-4 mr-1.5" />
+                      Edit Profile
+                    </button>
                   </div>
-                  <p className="text-white ml-6" style={{ color: "white !important", opacity: 1, visibility: "visible", textShadow: "0 0 0 white", fontWeight: "normal" }}>
-                    {employee?.email || user?.email || 'Email not available'}
-                  </p>
-                </div>
-                
-                <div className="glass p-4 rounded-xl">
-                  <div className="flex items-center mb-2">
-                    <Phone className="w-4 h-4 text-indigo-300 mr-2" />
-                    <h4 className="text-sm font-medium text-white/80">Phone Number</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="glass p-3 rounded-xl flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                        <Mail className="w-4 h-4 text-indigo-300" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/60">Email</div>
+                        <div className="text-sm text-white">{employee?.email || 'Not set'}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="glass p-3 rounded-xl flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                        <Phone className="w-4 h-4 text-indigo-300" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/60">Phone</div>
+                        <div className="text-sm text-white">{employee?.phoneNumber || 'Not set'}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="glass p-3 rounded-xl flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                        <MapPin className="w-4 h-4 text-indigo-300" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/60">Department</div>
+                        <div className="text-sm text-white">{employee?.department || 'Not assigned'}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="glass p-3 rounded-xl flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                        <Calendar className="w-4 h-4 text-indigo-300" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/60">Joined</div>
+                        <div className="text-sm text-white">
+                          {employee?.createdAt ? new Date(employee.createdAt).toLocaleDateString() : 'Unknown'}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-white ml-6">{employee.phoneNumber || 'Not provided'}</p>
-                </div>
-                
-                <div className="glass p-4 rounded-xl">
-                  <div className="flex items-center mb-2">
-                    <MapPin className="w-4 h-4 text-indigo-300 mr-2" />
-                    <h4 className="text-sm font-medium text-white/80">Address</h4>
+                  
+                  <div className="flex space-x-2 mt-4">
+                    <button 
+                      onClick={() => setShowRequestFeedback(true)}
+                      className="glass-button px-3 py-1.5 text-sm rounded-lg flex items-center"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-1.5" />
+                      Request Feedback
+                    </button>
+                    
+                    <button 
+                      onClick={() => setShowRateAdminModal(true)}
+                      className="glass-button px-3 py-1.5 text-sm rounded-lg flex items-center"
+                    >
+                      <Star className="w-4 h-4 mr-1.5" />
+                      Rate Leadership
+                    </button>
                   </div>
-                  <p className="text-white ml-6">{employee.address || 'Not provided'}</p>
-                </div>
-                
-                <div className="glass p-4 rounded-xl">
-                  <div className="flex items-center mb-2">
-                    <Calendar className="w-4 h-4 text-indigo-300 mr-2" />
-                    <h4 className="text-sm font-medium text-white/80">Birth Date</h4>
-                  </div>
-                  <p className="text-white ml-6">{employee.birthDate || 'Not provided'}</p>
-                </div>
-              </div>
-              
-              {/* Bio */}
-              {employee.bio && (
-                <div className="glass p-4 rounded-xl mt-6">
-                  <div className="flex items-center mb-2">
-                    <User className="w-4 h-4 text-indigo-300 mr-2" />
-                    <h4 className="text-sm font-medium text-white/80">Bio</h4>
-                  </div>
-                  <p className="text-white">{employee.bio}</p>
-                </div>
-              )}
-              
-              {/* Edit profile button */}
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => setShowEditProfile(true)}
-                  className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          {/* Add Request Feedback button */}
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={() => setShowRequestFeedback(true)}
-              className="glass-button-primary px-4 py-2 rounded-lg text-sm flex items-center"
-            >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Request Feedback
-            </button>
-          </div>
-        </div>
-
-        {/* Employee profile summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="md:col-span-2 glass-card p-6">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
-              <BarChart4 className="w-5 h-5 mr-2 text-indigo-300" />
-              Performance Overview
-            </h2>
-            
-            <div className="glass p-4 rounded-xl">
-              <div className="mb-3">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-white/70">Overall Performance</span>
-                  <span className="text-white font-medium">{employee.performanceScore}%</span>
-                </div>
-                <div className="w-full bg-white/10 rounded-full h-2">
-                  <div 
-                    className="h-full rounded-full bg-indigo-500" 
-                    style={{ width: `${employee.performanceScore || 0}%` }}
-                  />
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Metrics cards */}
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {metrics.map((metric) => (
-              <MetricsCard key={metric.name} metric={metric} />
-            ))}
-          </div>
-        </div>
+            {/* Performance Metrics */}
+            <div className="glass-card p-6">
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
+                <BarChart4 className="w-5 h-5 mr-2 text-indigo-300" />
+                Performance Metrics
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {metrics.map((metric) => (
+                  <MetricsCard key={metric.name} metric={metric} />
+                ))}
+              </div>
+            </div>
 
-        {/* Goals and Feedback */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Goals & Objectives */}
             <div className="glass-card p-6">
               <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
                 <FileText className="w-5 h-5 mr-2 text-indigo-300" />
@@ -1261,16 +1223,18 @@ const Dashboard = () => {
                 />
               )}
             </div>
-            
+
+            {/* Feedback Section */}
             <FeedbackSection 
               feedbacks={feedbacks} 
               onClearFeedback={handleClearFeedback}
               onClearAllFeedback={handleClearAllFeedback}
-          />
-        </div>
-
-          <div className="md:col-span-1">
-            {console.log("Rendering leaderboard with employees:", allEmployees)}
+            />
+          </div>
+          
+          {/* Right column - sidebar */}
+          <div className="md:col-span-4">
+            {/* Leaderboard */}
             <Leaderboard 
               employees={allEmployees} 
               currentEmployeeId={employee?.id} 
@@ -1278,20 +1242,28 @@ const Dashboard = () => {
             />
           </div>
         </div>
-      </main>
+      </div>
       
-      {/* Profile Edit Modal */}
-      {showEditProfile && (
+      {/* Modals */}
+      {showRateAdminModal && employee && (
+        <RateAdminModal
+          employeeId={employee.id}
+          onClose={() => setShowRateAdminModal(false)}
+          onSubmit={handleAdminRatingSubmit}
+        />
+      )}
+      
+      {/* Other modals */}
+      {showEditProfile && employee && (
         <ProfileEditModal 
           employee={employee}
           onClose={() => setShowEditProfile(false)}
           onSave={handleProfileUpdate}
         />
       )}
-
-      {/* Request Feedback Modal */}
-      {showRequestFeedback && (
-        <RequestFeedbackModal 
+      
+      {showRequestFeedback && employee && (
+        <RequestFeedbackModal
           employee={employee}
           onClose={() => setShowRequestFeedback(false)}
           onSubmit={handleRequestFeedback}

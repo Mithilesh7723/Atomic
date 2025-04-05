@@ -78,4 +78,19 @@ export interface Notification {
   createdAt: any; // Firebase timestamp
   relatedItemId?: string;
   relatedItemType?: string;
+}
+
+export interface AdminRating {
+  id?: string;
+  adminId: string;
+  employeeId: string;
+  ratings: {
+    leadership: number;
+    communication: number;
+    supportiveness: number;
+    technicalGuidance: number;
+  };
+  comment: string;
+  createdAt: Date;
+  isAnonymous: boolean;
 } 

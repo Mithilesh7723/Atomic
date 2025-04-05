@@ -14,7 +14,7 @@ import {
   DataSnapshot 
 } from 'firebase/database';
 import { realtimeDb } from '../config/firebase';
-import { User, Employee, Goal, Feedback, Department, PerformanceMetric, Notification } from '../types/models';
+import { User, Employee, Goal, Feedback, Department, PerformanceMetric, Notification, AdminRating } from '../types/models';
 
 // Utility function to handle database errors
 const handleDatabaseError = (error: any, operation: string): never => {
@@ -918,4 +918,85 @@ export const subscribeToEmployees = (callback: (employees: Employee[]) => void):
     console.log("Unsubscribing from employees real-time updates");
     off(employeesRef, 'value', handleEmployeesUpdate);
   };
+};
+
+// Admin Rating Management
+export const createAdminRating = async (ratingData: Omit<AdminRating, 'id'>): Promise<AdminRating> => {
+  const ratingsRef = ref(realtimeDb, 'adminRatings');
+  const newRatingRef = push(ratingsRef);
+  const ratingId = newRatingRef.key as string;
+  
+  // Format date
+  const createdAt = ratingData.createdAt instanceof Date 
+    ? ratingData.createdAt.toISOString() 
+    : new Date().toISOString();
+  
+  const rating: AdminRating = {
+    ...ratingData,
+    id: ratingId,
+    createdAt: new Date(createdAt)
+  };
+  
+  await set(newRatingRef, rating);
+  
+  // Create notification for the admin
+  try {
+    await createNotification({
+      userId: ratingData.adminId,
+      title: 'New Leadership Rating',
+      message: 'You received new feedback on your leadership',
+      type: 'rating',
+      read: false,
+      createdAt: new Date(),
+      relatedItemId: ratingId,
+      relatedItemType: 'adminRating'
+    });
+  } catch (error) {
+    console.error('Error creating notification for admin rating:', error);
+    // Don't throw here - we don't want to fail the rating creation if notification fails
+  }
+  
+  return rating;
+};
+
+export const getAdminRatingsByAdminId = async (adminId: string): Promise<AdminRating[]> => {
+  try {
+    const ratingsRef = ref(realtimeDb, 'adminRatings');
+    const ratingQuery = query(ratingsRef, orderByChild('adminId'), equalTo(adminId));
+    const snapshot = await get(ratingQuery);
+    
+    if (!snapshot.exists()) return [];
+    
+    const ratings = snapshot.val();
+    return Object.keys(ratings).map(key => ({
+      ...ratings[key],
+      id: key,
+      // Convert ISO string to Date object if needed
+      createdAt: new Date(ratings[key].createdAt)
+    }));
+  } catch (error) {
+    console.error('Error getting admin ratings:', error);
+    throw error;
+  }
+};
+
+export const getAdminRatingsByEmployeeId = async (employeeId: string): Promise<AdminRating[]> => {
+  try {
+    const ratingsRef = ref(realtimeDb, 'adminRatings');
+    const ratingQuery = query(ratingsRef, orderByChild('employeeId'), equalTo(employeeId));
+    const snapshot = await get(ratingQuery);
+    
+    if (!snapshot.exists()) return [];
+    
+    const ratings = snapshot.val();
+    return Object.keys(ratings).map(key => ({
+      ...ratings[key],
+      id: key,
+      // Convert ISO string to Date object if needed
+      createdAt: new Date(ratings[key].createdAt)
+    }));
+  } catch (error) {
+    console.error('Error getting admin ratings:', error);
+    throw error;
+  }
 };

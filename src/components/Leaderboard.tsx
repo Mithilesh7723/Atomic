@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Medal, User, ArrowUp, ArrowDown, Minus, AlertCircle, Loader2 } from 'lucide-react';
+import { Trophy, Medal, User, ArrowUp, ArrowDown, Minus, AlertCircle, Loader2, DollarSign, Star } from 'lucide-react';
 import { Employee } from '../types/models';
 import { getAllEmployees } from '../services/realtimeDbService';
 
@@ -16,6 +16,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
+  const [showIncentiveInfo, setShowIncentiveInfo] = useState(false);
   
   // If no employees are provided via props, fetch them directly
   useEffect(() => {
@@ -71,10 +72,35 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
     
     return (
       <div className="glass-card p-6">
-        <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-          <Trophy className="w-5 h-5 mr-2 text-yellow-400" />
-          Performance Leaderboard
+        <h3 className="text-xl font-semibold text-white mb-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <Trophy className="w-5 h-5 mr-2 text-yellow-400" />
+            Performance Leaderboard
+          </div>
+          <button
+            onClick={() => setShowIncentiveInfo(!showIncentiveInfo)}
+            className="text-xs bg-indigo-500/20 px-2 py-1 rounded-full text-indigo-300 hover:bg-indigo-500/30 flex items-center"
+          >
+            <DollarSign className="w-3 h-3 mr-1" />
+            Incentives
+          </button>
         </h3>
+        
+        {showIncentiveInfo && (
+          <div className="mb-4 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-white text-sm">
+            <h4 className="font-semibold mb-1 flex items-center">
+              <Star className="w-4 h-4 text-yellow-400 mr-1" />
+              Performance Incentives Program
+            </h4>
+            <p className="text-white/70 mb-2">Top performers on the leaderboard qualify for special bonuses and recognition.</p>
+            <ul className="text-white/60 text-xs space-y-1 ml-5 list-disc">
+              <li>1st Place: 15% quarterly bonus & recognition award</li>
+              <li>2nd Place: 10% quarterly bonus</li>
+              <li>3rd Place: 5% quarterly bonus</li>
+              <li>Top 10%: Special training opportunities & development budget</li>
+            </ul>
+          </div>
+        )}
         
         <div className="overflow-x-auto">
           <table className="min-w-full">
@@ -170,12 +196,78 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
     return 'bg-red-500';
   };
 
+  // Check if current employee is eligible for incentive
+  const isEligibleForIncentive = () => {
+    if (!currentEmployeeId) return false;
+    
+    // Find current employee position
+    const position = sortedEmployees.findIndex(emp => emp.id === currentEmployeeId);
+    
+    // Eligible if in top 3 or top 10% of employees
+    return position < 3 || (position < sortedEmployees.length * 0.1);
+  };
+
+  // Get incentive information based on rank
+  const getIncentiveInfo = (index: number) => {
+    if (index === 0) return { bonus: '15%', badge: 'Gold' };
+    if (index === 1) return { bonus: '10%', badge: 'Silver' };
+    if (index === 2) return { bonus: '5%', badge: 'Bronze' };
+    if (index < sortedEmployees.length * 0.1) return { bonus: 'Training', badge: 'Elite' };
+    return null;
+  };
+
   return (
     <div className="glass-card p-6">
-      <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-        <Trophy className="w-5 h-5 mr-2 text-yellow-400" />
-        Performance Leaderboard
+      <h3 className="text-xl font-semibold text-white mb-4 flex items-center justify-between">
+        <div className="flex items-center">
+          <Trophy className="w-5 h-5 mr-2 text-yellow-400" />
+          Performance Leaderboard
+        </div>
+        <button
+          onClick={() => setShowIncentiveInfo(!showIncentiveInfo)}
+          className="text-xs bg-indigo-500/20 px-2 py-1 rounded-full text-indigo-300 hover:bg-indigo-500/30 flex items-center"
+        >
+          <DollarSign className="w-3 h-3 mr-1" />
+          Incentives
+        </button>
       </h3>
+      
+      {showIncentiveInfo && (
+        <div className="mb-4 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-white text-sm">
+          <h4 className="font-semibold mb-1 flex items-center">
+            <Star className="w-4 h-4 text-yellow-400 mr-1" />
+            Performance Incentives Program
+          </h4>
+          <p className="text-white/70 mb-2">Top performers on the leaderboard qualify for special bonuses and recognition.</p>
+          <ul className="text-white/60 text-xs space-y-1 ml-5 list-disc">
+            <li>1st Place: 15% quarterly bonus & recognition award</li>
+            <li>2nd Place: 10% quarterly bonus</li>
+            <li>3rd Place: 5% quarterly bonus</li>
+            <li>Top 10%: Special training opportunities & development budget</li>
+          </ul>
+        </div>
+      )}
+      
+      {currentEmployeeId && isEligibleForIncentive() && (
+        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-white flex items-start">
+          <div className="bg-yellow-400 p-1.5 rounded-full mr-3 flex-shrink-0 mt-0.5">
+            <DollarSign className="w-4 h-4 text-indigo-900" />
+          </div>
+          <div>
+            <h4 className="font-medium mb-0.5">Congratulations! You're eligible for incentives</h4>
+            <p className="text-white/70 text-sm">
+              {sortedEmployees.findIndex(emp => emp.id === currentEmployeeId) === 0 
+                ? "You're currently in 1st place! Keep up the excellent work to secure your 15% bonus and recognition award."
+                : sortedEmployees.findIndex(emp => emp.id === currentEmployeeId) === 1
+                  ? "You're in 2nd place! You're on track to receive a 10% quarterly bonus."
+                  : sortedEmployees.findIndex(emp => emp.id === currentEmployeeId) === 2
+                    ? "You're in 3rd place! Continue your performance to earn a 5% quarterly bonus."
+                    : "You're in the top 10%! You qualify for special training and development opportunities."
+              }
+            </p>
+          </div>
+        </div>
+      )}
       
       <div className="overflow-x-auto">
         <table className="min-w-full">
@@ -185,6 +277,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
               <th className="py-3 text-left">Employee</th>
               <th className="py-3 text-center">Performance</th>
               <th className="py-3 text-center w-16">Trend</th>
+              <th className="py-3 text-center w-24">Incentive</th>
             </tr>
           </thead>
           <tbody>
@@ -192,6 +285,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
               const trend = getPerformanceTrend(employee.id);
               const isCurrentEmployee = employee.id === currentEmployeeId;
               const score = employee.performanceScore || 0;
+              const incentive = getIncentiveInfo(index);
               
               return (
                 <tr 
@@ -199,6 +293,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
                   className={`
                     border-t border-white/5 hover:bg-white/5
                     ${isCurrentEmployee ? 'bg-indigo-500/10' : ''}
+                    transition-colors
                   `}
                 >
                   <td className="py-3">
@@ -208,13 +303,9 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
                   </td>
                   <td className="py-3">
                     <div className="flex items-center">
-                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3 overflow-hidden">
+                      <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center mr-3">
                         {employee.photoURL ? (
-                          <img 
-                            src={employee.photoURL} 
-                            alt={employee.name} 
-                            className="w-full h-full object-cover" 
-                          />
+                          <img src={employee.photoURL} alt={employee.name} className="w-8 h-8 rounded-full object-cover" />
                         ) : (
                           <User className="w-4 h-4 text-indigo-300" />
                         )}
@@ -223,7 +314,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
                         <div className="font-medium text-white">
                           {employee.name}
                           {isCurrentEmployee && (
-                            <span className="ml-2 text-xs bg-indigo-500/20 px-2 py-0.5 rounded text-indigo-300">You</span>
+                            <span className="ml-2 text-xs bg-indigo-500/40 px-2 py-0.5 rounded text-indigo-200">You</span>
                           )}
                         </div>
                         <div className="text-white/60 text-sm">{employee.position}</div>
@@ -234,26 +325,36 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
                     <div className="flex flex-col items-center">
                       <div className="font-medium text-white mb-1">
                         {score}%
-                        {score === 0 && <span className="text-xs text-white/60 ml-1">(Not rated)</span>}
                       </div>
                       <div className="w-full max-w-[100px] bg-white/10 rounded-full h-1.5">
                         <div 
-                          className={`h-full rounded-full ${getPerformanceColor(score)}`}
-                          style={{ width: `${score}%` }}
+                          className={`h-full rounded-full ${getPerformanceColor(score)}`} 
+                          style={{ width: `${score}%` }} 
                         />
                       </div>
                     </div>
                   </td>
                   <td className="py-3">
                     <div className="flex justify-center">
-                      {score === 0 ? (
-                        <span className="text-white/40 text-xs">New</span>
+                      {trend === 'up' && <ArrowUp className="w-5 h-5 text-emerald-400" />}
+                      {trend === 'down' && <ArrowDown className="w-5 h-5 text-red-400" />}
+                      {trend === 'same' && <Minus className="w-5 h-5 text-white/40" />}
+                    </div>
+                  </td>
+                  <td className="py-3">
+                    <div className="flex justify-center">
+                      {incentive ? (
+                        <span className={`
+                          text-xs px-2 py-0.5 rounded-full 
+                          ${index === 0 ? 'bg-yellow-400/20 text-yellow-400' : 
+                            index === 1 ? 'bg-gray-300/20 text-gray-300' : 
+                              index === 2 ? 'bg-amber-700/20 text-amber-700' : 
+                                'bg-indigo-500/20 text-indigo-300'}
+                        `}>
+                          {incentive.bonus}
+                        </span>
                       ) : (
-                        <>
-                          {trend === 'up' && <ArrowUp className="w-5 h-5 text-emerald-400" />}
-                          {trend === 'down' && <ArrowDown className="w-5 h-5 text-red-400" />}
-                          {trend === 'same' && <Minus className="w-5 h-5 text-gray-400" />}
-                        </>
+                        <span className="text-white/30 text-xs">-</span>
                       )}
                     </div>
                   </td>
