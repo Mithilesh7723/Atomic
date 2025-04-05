@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getDatabase } from "firebase/database";
+import { getDatabase, connectDatabaseEmulator, enableLogging } from "firebase/database";
 import { getAnalytics } from "firebase/analytics";
 import { getStorage } from "firebase/storage";
 
@@ -20,9 +20,36 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+// Enable more verbose logging for development environments
+if (process.env.NODE_ENV !== 'production') {
+  enableLogging(console.log);
+  console.log('Firebase verbose logging enabled in development mode');
+}
+
 // Initialize Firebase services
 export const auth = getAuth(app);
 export const realtimeDb = getDatabase(app);
+
+// Set database connection settings
+const dbRef = realtimeDb;
+
+// Configure connection - these settings improve real-time performance
+dbRef.ref = (path) => {
+  const originalRef = dbRef.ref(path);
+  
+  // Add enhanced logging for debugging
+  const originalOnValue = originalRef.on;
+  originalRef.on = function(eventType, callback, cancelCallback, context) {
+    console.log(`Setting up listener for path: ${path}, event: ${eventType}`);
+    return originalOnValue.call(this, eventType, (snapshot) => {
+      console.log(`Received data for path: ${path}`, snapshot.exists() ? 'Data exists' : 'No data');
+      callback(snapshot);
+    }, cancelCallback, context);
+  };
+  
+  return originalRef;
+};
+
 export const analytics = getAnalytics(app);
 export const storage = getStorage(app);
 

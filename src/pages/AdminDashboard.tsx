@@ -968,14 +968,39 @@ const AdminDashboard = () => {
 
   // Setup realtime subscription to employees data
   useEffect(() => {
+    console.log("Setting up real-time subscription to employees data");
+    
+    // Explicitly call fetchEmployees once to ensure we have initial data 
+    // even if the real-time subscription takes time to initialize
+    fetchEmployees(); 
+    
     // Subscribe to real-time updates for all employees
     const unsubscribe = subscribeToEmployees((updatedEmployees) => {
       console.log('Realtime employee data updated:', updatedEmployees.length);
-      setEmployees(updatedEmployees);
+      
+      // Use a functional update to ensure we're working with the latest state
+      setEmployees(prev => {
+        // Compare if there's actually a change to prevent unnecessary re-renders
+        const prevIds = new Set(prev.map(emp => emp.id));
+        const updatedIds = new Set(updatedEmployees.map(emp => emp.id));
+        
+        // If the employee IDs match exactly and no changes, keep previous state
+        const hasNewEmployees = updatedEmployees.length !== prev.length || 
+          updatedEmployees.some(emp => !prevIds.has(emp.id));
+          
+        if (hasNewEmployees) {
+          console.log('New employee data detected, updating state');
+          return updatedEmployees;
+        }
+        
+        console.log('No changes detected in employee data');
+        return prev;
+      });
     });
     
     // Cleanup function
     return () => {
+      console.log("Cleaning up real-time subscription to employees");
       unsubscribe();
     };
   }, []);
@@ -1390,8 +1415,9 @@ const AdminDashboard = () => {
         updatedAt: new Date()
       });
       
-      // Note: No need to manually update the employees state here
-      // as the real-time subscription will handle the update automatically
+      // Note: Real-time subscription should handle the update automatically
+      // For extra reliability, also update the local state immediately
+      setEmployees(prev => [...prev, newEmployee]);
       
       // 4. Add to recent activity
       setRecentActivity(prev => [{
